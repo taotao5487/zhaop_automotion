@@ -356,10 +356,19 @@ def _sanitize_digest(digest: str) -> str:
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
+    _load_official_env()
     value = (os.getenv(name, "") or "").strip().lower()
     if not value:
         return default
     return value in ("1", "true", "yes", "on")
+
+
+def get_comment_settings_for_article_payload() -> tuple[int, int]:
+    need_open_comment = 1 if _env_flag("OFFICIAL_WX_OPEN_COMMENT", default=True) else 0
+    only_fans_can_comment = (
+        1 if need_open_comment and _env_flag("OFFICIAL_WX_ONLY_FANS_CAN_COMMENT", default=False) else 0
+    )
+    return need_open_comment, only_fans_can_comment
 
 
 def _build_official_account_card_html() -> str:
@@ -605,6 +614,7 @@ async def _build_recruitment_article_payload(
         raise OfficialWechatDraftError("正文中仍有未替换的外部图片链接，已中止草稿写入")
 
     thumb_media_id = await _upload_cover_material(access_token, cover_url)
+    need_open_comment, only_fans_can_comment = get_comment_settings_for_article_payload()
     article_payload = {
         "title": _sanitize_title(row.get("title", "")),
         "author": _sanitize_author(row.get("author", "")),
@@ -612,8 +622,8 @@ async def _build_recruitment_article_payload(
         "content": rewritten_content,
         "content_source_url": row.get("link", ""),
         "thumb_media_id": thumb_media_id,
-        "need_open_comment": 0,
-        "only_fans_can_comment": 0,
+        "need_open_comment": need_open_comment,
+        "only_fans_can_comment": only_fans_can_comment,
     }
     return article_payload, thumb_media_id, image_replacements
 

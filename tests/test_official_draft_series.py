@@ -235,6 +235,96 @@ async def test_build_payload_rejects_empty_content_even_if_card_exists(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_build_payload_opens_comments_by_default(monkeypatch):
+    import utils.official_wechat_draft as official_draft_module
+
+    async def fake_upload_cover_material(access_token, cover_url):
+        return "thumb-1"
+
+    async def fake_rewrite_content_images(access_token, content_html):
+        return content_html, []
+
+    monkeypatch.delenv("OFFICIAL_WX_OPEN_COMMENT", raising=False)
+    monkeypatch.delenv("OFFICIAL_WX_ONLY_FANS_CAN_COMMENT", raising=False)
+    monkeypatch.setenv("OFFICIAL_WX_CARD_ENABLED", "false")
+    monkeypatch.setattr(
+        "utils.official_wechat_draft._upload_cover_material",
+        fake_upload_cover_material,
+    )
+    monkeypatch.setattr(
+        "utils.official_wechat_draft._rewrite_content_images",
+        fake_rewrite_content_images,
+    )
+
+    payload, thumb_media_id, replacements = await official_draft_module._build_recruitment_article_payload(
+        "token",
+        _make_row("https://example.com/comments-default"),
+    )
+
+    assert thumb_media_id == "thumb-1"
+    assert replacements == []
+    assert payload["need_open_comment"] == 1
+    assert payload["only_fans_can_comment"] == 0
+
+
+@pytest.mark.asyncio
+async def test_build_payload_allows_fans_only_comments_by_env(monkeypatch):
+    import utils.official_wechat_draft as official_draft_module
+
+    async def fake_upload_cover_material(access_token, cover_url):
+        return "thumb-1"
+
+    async def fake_rewrite_content_images(access_token, content_html):
+        return content_html, []
+
+    monkeypatch.setenv("OFFICIAL_WX_OPEN_COMMENT", "true")
+    monkeypatch.setenv("OFFICIAL_WX_ONLY_FANS_CAN_COMMENT", "true")
+    monkeypatch.setenv("OFFICIAL_WX_CARD_ENABLED", "false")
+    monkeypatch.setattr(
+        "utils.official_wechat_draft._upload_cover_material",
+        fake_upload_cover_material,
+    )
+    monkeypatch.setattr(
+        "utils.official_wechat_draft._rewrite_content_images",
+        fake_rewrite_content_images,
+    )
+
+    payload, _, _ = await official_draft_module._build_recruitment_article_payload(
+        "token",
+        _make_row("https://example.com/comments-fans-only"),
+    )
+
+    assert payload["need_open_comment"] == 1
+    assert payload["only_fans_can_comment"] == 1
+
+
+def test_preview_payload_opens_comments_by_default(monkeypatch):
+    import utils.official_wx_preview as preview_module
+
+    monkeypatch.delenv("OFFICIAL_WX_OPEN_COMMENT", raising=False)
+    monkeypatch.delenv("OFFICIAL_WX_ONLY_FANS_CAN_COMMENT", raising=False)
+
+    preview = preview_module._build_preview_article(_make_row("https://example.com/preview-default"))
+    article = preview["official_draft_payload"]["articles"][0]
+
+    assert article["need_open_comment"] == 1
+    assert article["only_fans_can_comment"] == 0
+
+
+def test_preview_payload_respects_comment_env(monkeypatch):
+    import utils.official_wx_preview as preview_module
+
+    monkeypatch.setenv("OFFICIAL_WX_OPEN_COMMENT", "false")
+    monkeypatch.setenv("OFFICIAL_WX_ONLY_FANS_CAN_COMMENT", "true")
+
+    preview = preview_module._build_preview_article(_make_row("https://example.com/preview-env"))
+    article = preview["official_draft_payload"]["articles"][0]
+
+    assert article["need_open_comment"] == 0
+    assert article["only_fans_can_comment"] == 0
+
+
+@pytest.mark.asyncio
 async def test_push_article_row_to_draft_hydrates_missing_content_before_payload(monkeypatch):
     import utils.official_wechat_draft as official_draft_module
 

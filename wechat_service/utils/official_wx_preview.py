@@ -25,6 +25,7 @@ from typing import Dict, List, Optional
 
 from shared.paths import DATA_DIR, ROOT_DIR
 from wechat_service.utils import rss_store
+from wechat_service.utils.official_wechat_draft import get_comment_settings_for_article_payload
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,7 @@ def _build_preview_article(row: Dict) -> Dict:
     account_name = (row.get("nickname") or row.get("fakeid") or "").strip()
     images = rss_store.parse_json_list(row.get("images_json"))
     blocked_reasons = _build_blocked_reasons(row)
+    need_open_comment, only_fans_can_comment = get_comment_settings_for_article_payload()
 
     return {
         "account_name": account_name,
@@ -120,8 +122,8 @@ def _build_preview_article(row: Dict) -> Dict:
                     "digest": digest,
                     "content": row.get("content", ""),
                     "content_source_url": source_url,
-                    "need_open_comment": 0,
-                    "only_fans_can_comment": 0,
+                    "need_open_comment": need_open_comment,
+                    "only_fans_can_comment": only_fans_can_comment,
                 }
             ]
         },
