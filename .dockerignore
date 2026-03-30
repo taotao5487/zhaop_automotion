@@ -1,0 +1,15 @@
+.git
+.venv
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+data/rss.db-shm
+data/rss.db-wal
+data_backups
+logs
+docs
+monitoring
+assets/qrcode

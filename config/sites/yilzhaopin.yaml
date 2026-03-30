@@ -1,0 +1,172 @@
+# 医疗招聘网站配置示例
+# 假设网站：https://www.ylzhaopin.com
+
+site_name: "yilzhaopin"
+base_url: "https://www.ylzhaopin.com"
+enabled: true
+priority: 1
+description: "医疗招聘网-医护人才招聘平台"
+
+# 爬取策略
+crawling:
+  start_urls:
+    - "https://www.ylzhaopin.com/zhaopin/"
+  pagination:
+    enabled: true
+    type: "url_param"
+    pattern: "?page={page}"
+    start_page: 1
+    max_pages: 20
+    page_increment: 1
+  request_interval: 2.0
+  timeout: 30
+  max_retries: 3
+  follow_links: true  # 需要进入详情页获取更多信息
+
+# 解析规则
+parsing:
+  list_page:
+    container_selector: "div.job-list"
+    item_selector: "div.job-item"
+
+    fields:
+      title:
+        selector: "h2.job-title a"
+        type: "text"
+        required: true
+        transform: "strip"
+      url:
+        selector: "h2.job-title a"
+        type: "attr"
+        attr: "href"
+        required: true
+        transform: "absolute_url"
+      publish_date:
+        selector: "span.publish-time"
+        type: "text"
+        required: true
+        date_format: "%Y-%m-%d"
+        transform: "parse_date"
+      hospital:
+        selector: "span.hospital-name"
+        type: "text"
+        required: false
+        default: "未知医院"
+      location:
+        selector: "span.job-location"
+        type: "text"
+        required: false
+      salary:
+        selector: "span.salary-range"
+        type: "text"
+        required: false
+
+  detail_page:
+    enabled: true
+    fields:
+      description:
+        selector: "div.job-description-content"
+        type: "html"
+        required: false
+        transform: "clean_html"
+      requirements:
+        selector: "div.job-requirements"
+        type: "html"
+        required: false
+      department:
+        selector: "span.department"
+        type: "text"
+        required: false
+      education:
+        selector: "span.education-requirement"
+        type: "text"
+        required: false
+      experience:
+        selector: "span.experience-requirement"
+        type: "text"
+        required: false
+      contact_person:
+        selector: "div.contact-info p:nth-child(1)"
+        type: "text"
+        required: false
+      contact_phone:
+        selector: "div.contact-info p:nth-child(2)"
+        type: "text"
+        required: false
+
+# WAF处理策略
+waf_strategy:
+  detection_enabled: true
+  bypass_enabled: true
+  strategies:
+    - name: "stealth"
+      enabled: true
+      priority: 1
+    - name: "cloudscraper"
+      enabled: true
+      priority: 2
+    - name: "dynamic_browser"
+      enabled: false
+      priority: 3
+
+# 数据验证规则
+validation:
+  required_fields: ["title", "url", "publish_date"]
+  field_rules:
+    title:
+      min_length: 5
+      max_length: 200
+    url:
+      pattern: "^https?://.+/job/\\d+"
+    publish_date:
+      min_date: "2020-01-01"
+      max_date: "now"
+      format: "%Y-%m-%d"
+
+# 数据后处理
+post_processing:
+  field_mappings:
+    hospital: "employer"
+    location: "work_location"
+
+  field_defaults:
+    source_site: "yilzhaopin"
+    crawl_time: "now"
+
+  filters:
+    - field: "publish_date"
+      operator: ">="
+      value: "90 days ago"  # 只保留90天内的数据
+
+  transformers:
+    - field: "title"
+      function: "strip"
+    - field: "url"
+      function: "normalize_url"
+    - field: "publish_date"
+      function: "format_date"
+      args:
+        format: "%Y-%m-%d"
+
+# 监控和报告
+monitoring:
+  enable_stats: true
+  success_threshold: 0.7
+  alert_on_empty: true
+  alert_on_validation_fail: true
+
+# 测试配置
+testing:
+  test_url: "https://www.ylzhaopin.com/zhaopin/?page=1"
+  sample_size: 3
+  validate_output: true
+  debug_mode: false
+
+# 备注
+notes: |
+  1. 网站使用分页查询，page参数控制页码
+  2. 职位列表在div.job-list容器中
+  3. 每个职位项是div.job-item
+  4. 需要进入详情页获取完整信息
+  5. 发布日期格式为YYYY-MM-DD
+  6. 遇到WAF时使用cloudscraper绕过

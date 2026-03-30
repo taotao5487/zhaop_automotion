@@ -1,0 +1,188 @@
+hospital_name,list_page_url,base_url,listing_selector,list_title_selector,link_selector
+重庆医科大学附属第一医院,https://www.hospital-cqmu.com/gw_zpyc_zpgg,https://www.hospital-cqmu.com/,ul.mt40 li,p span,a
+重庆医科大学附属儿童医院,http://www.chcmu.com/rczp/qtryzp.htm,https://www.chcmu.com/,body > section.n_container > div > div.rightBox > div.n_list > ul > li,body > section.n_container > div > div.rightBox > div.n_list > ul > li > a,body > section.n_container > div > div.rightBox > div.n_list > ul > li > a
+重庆医科大学附属第二医院,https://www.cqsahcqmu.cn/index.php?c=category&id=56,https://www.sahcqmu.cn/,ul.clearfix li,h5,a
+重庆市急救医疗中心,https://www.120cq.com.cn/rsrc_ryzl/,https://www.120cq.com.cn/,li:has(div.news-list-info),h2 a,h2 a
+重庆医科大学附属大学城医院,http://www.uhcmu.com/xxfb/rczp/gwxq.htm,http://www.uhcmu.com/,div.fl.tzgg-list-left ul li,a,a
+重庆医科大学附属口腔医院,https://www.cqdent.com/html/xwzx/ggtz/List_2.shtml,https://www.cqdent.com/,div.sortlist dl dd ul li,a,a
+重庆市渝北区人民医院,https://www.ybqrmyy.com/pageList.html?mId=39&page=1,https://www.ybqrmyy.com/,#pagerAppender > div > div > ul > li,a,a
+重庆医药高等专科学校附属第一医院,http://www.cqszfy.com/gsgg/rczp1.htm,http://www.cqszfy.com/,ul.list1 li,a.tit,a.tit
+重庆市第九人民医院,https://www.cq9yuan.com/hr_notice/,https://www.cq9yuan.com/,ul.info-list li,a,a
+重庆市北碚中医院,https://www.cqbbzyy.com/index.php?c=category&id=291,https://www.cqbbzyy.com/,ul.rczpul.clearfix li.rczpli.clearfix.wow,div.rczptitle a,div.rczptitle a
+重庆医科大学附属巴南医院,https://bnrmyy.cn/rczp,https://www.bnyy.com/,ul.pageTPList,a.tit,a.tit
+重庆大学附属江津医院,http://www.jjhospital.com.cn/html/xxgg/rszp/,http://www.jjhospital.com.cn/,ul.in-new li,a,a
+重庆市江津区中医院,http://www.jjzyy.com/category/305/list_305_1.html,http://www.jjzyy.com/,ul.list li.list-item,a.list-item-title,a.list-item-title
+重庆医科大学附属永川医院,https://www.ychcqmu.com/recruitment_system_rszp_qtryzp,https://www.ychcqmu.com/,ul li,a p.tit,a
+重庆医科大学附属璧山医院,https://www.bsrmyy.com/rczp/zpgg,https://www.bsrmyy.com/,ul.in51,div.det span,a
+重庆市铜梁区人民医院,http://www.cqstlqrmyy.cn/html/xxfb/ryzp/,http://www.cqstlqrmyy.cn/,div.newsList,div.name,a
+重庆市合川区人民医院,http://www.hcrmyy.cn/,http://www.hcrmyy.cn/,ul.n2.xx2_lb li:has(a[href*='/list/287/']),a[href*='/list/287/'],a[href*='/list/287/']
+重庆市荣昌区人民医院,http://www.cqrc120.cn/human_resources/,http://www.cqrc120.cn/,ul.info-list li,a,a
+重庆市南川区人民医院,http://www.ncrmyy.com/html/yczp/,http://www.ncrmyy.com/,ul.in-new-ul li,div.lef a,a
+重庆大学附属三峡医院,https://sxyy.cqu.edu.cn/rczl1/rczl.htm,https://sxyy.cqu.edu.cn/,div.list_box ul li,a,a
+重庆市开州区人民医院,https://www.cqskzqrmyy.cn/Category_52/Index.aspx,https://www.cqskzqrmyy.cn/,ul.newsList li,li.first a,li.first a
+重庆大学附属黔江医院,https://www.qjzxyy.cn/list/?id=16,https://www.qjzxyy.cn/,ul.lb-list li,a.title.clamp,a.title.clamp
+成都市第三人民医院,https://www.cd3hospital.com/hos_hr,https://www.cd3hospital.com,div.txt-list-wrap.mt40 ul.txt-list li,a,a
+四川省中医药科学院,https://www.scsgkyy.com/recruit/,https://www.scsgyky.com,li.common-news-wrapper,a.common-news-title,a.common-news-title
+四川省第四人民医院,https://www.scsdsrmyy.cn/news_notes_job/,https://www.scsdsrmyy.cn,ul#news-list li,h2 a,h2 a
+成都市公共卫生临床医疗中心,https://www.phcc120.com/station.aspx?category_id=5,https://www.phcc120.com,ul.precruit-list li,h3.t,a
+四川肿瘤医院,https://www.sichuancancer.org/sy/rczp.htm,https://www.sichuancancer.org/,ul.wrap1.list li,h2,a
+成都市第二人民医院,https://www.cd2120.com/news_offer/,https://www.cd2120.com/,div.info-list ul li,h3,a
+四川省医学科学院·四川省人民医院,https://www.samsph.cn/rszp_zpgg/,https://www.samsph.cn/,ul.info-list li,a,a
+成都市妇女儿童中心医院,https://www.wcch.cn/hos_hr/,https://www.wcch.cn/,ul.info-list li,a,a
+四川口腔医院,https://www.sckqyy.com.cn/news.aspx?mid=398&sid=,https://www.sckqyy.com.cn/,ul.pnews-list li,h3,a
+成都大学附属医院（成都大学附属医院互联网医院）,https://cdfy120.cdu.edu.cn/gg/rs.htm,https://cdfy120.cdu.edu.cn/,div.content_right tr:has(> td[width="87%"]):has(> td[width="13%"]),td[width="87%"] a,td[width="87%"] a
+成都中医药大学附属医院（四川省中医医院  成都中医药大学附属医院（四川省中医医院）互联网医院）,http://www.sctcm120.com/xwzx/rczp.htm,http://www.sctcm120.com/,ul.ltrg_lwz li,a,a
+成都市第八人民医院（成都市慢性病医院   成都市第八人民医院互联网医院）,https://www.cds8yy.com/news_mtjj/,https://www.cds8yy.com/,ul.info-list li,a,a
+成都市第四人民医院（精神卫生中心 电子科技大学成都脑科学研究院临床医院 第四人民医院互联网医院,https://www.cd-psychologist.com/4120/renshizhaopin/,https://www.cd-psychologist.com/,dl.newsList dd,h4,a.linkA
+成都市金牛区人民医院（四川省人民医院金牛医院 成都市脑外伤抢救中心 成都市金牛区人民医院互联网医院）,http://www.scjn120.com/go.htm?url=news-recruitment&c=ren_cai_zhao_pin,http://www.scjn120.com/,ul.news_left_rc li,h3 a,h3 a
+四川省中西医结合医院（四川省中医药科学院附属医院）,http://www.scszxy.com/News/Category.asp?ID=21,http://www.scszxy.com/,#ctl00_Content_ListBySortId1_SmallSort td a[href*="/News/View.asp?ID="],a,a
+西藏自治区人民政府驻成都办事处医院,https://www.tcd120.cn/bidding_recruitment/recruitment,https://www.tcd120.cn/home,div.bulletin-lists div,.bulletin-content,.bulletin-content
+四川大学华西口腔医院,https://www.hxkq.org/Html/News/Columns/264/Index.html,https://www.hxkq.org/,ul.column_list li,a.dy_title,a
+四川大学华西第四医院,https://www.wcfh.com.cn/zhb_tzgg_rczp,https://www.wcfh.com.cn/gzb,ul.mt30 li,p a,p a
+四川大学华西医院,https://www.wchscu.cn/public/notice/recruit.html,https://www.wchscu.cn/public/index.html,div.list div.item,span.s1.wto,a.clear
+成都体育学院附属体育医院,https://ctfy1958.cdsu.edu.cn/ywgk/zbzp.htm,https://ctfy1958.cdsu.edu.cn/,div.PagedArticleList_Default div.article_list > ul > li,a,a
+成都双楠医院,https://www.cdsnyy.cn/html/rczp/,https://www.cdsnyy.cn/,div.crzp_item_layout div,h5,a
+四川泌尿外科医院,https://www.scmn120.net/job/,https://www.scmn120.net/8/,div.patien-services-insurance.w-1200,"div.name,ellipsis-1",a
+成都市第六人民医院,https://www.cd6hospital.cn/gzb_ywgk_zbzp2_zpgs,https://www.cd6hospital.cn/gzb,ul.mb80 li,a,a
+四川天府新区人民医院,http://www.tfxqrmyy.com/public_ywgk/,http://www.tfxqrmyy.com/,ul.info-list li,a,a
+成都市龙泉驿区中医医院,https://www.lqzyy.com/hos_hr/,https://www.lqzyy.com/,ul.info-list li,a,a
+成都市龙泉驿区第一人民医院,https://www.cdlqyyy.cn/news.aspx?mid=446,https://www.cdlqyyy.cn/,ul.pnews-list li,a,a
+四川护理职业学院附属医院（四川省第三人民医院）,https://www.shzyfy.com/hr_flow/,https://www.shzyfy.com/,ul.txt-list li,a,a
+成都市青白江区人民医院,https://www.qbjqrmyy.com/index.php?c=category&id=56,https://www.qbjqrmyy.com/,ul.new_news li,div.fl.new_zy,li a
+成都市新都区第二人民医院,https://www.cd2120.com/news_offer/,https://www.cd2120.com/,div.info-list ul li,h3,a
+成都市新都区人民医院,https://www.xdqrmyy.com/home/news/list/id/63/zid/63.html,https://www.xdqrmyy.com/home/index/index.html,ul.ullist li,a,a
+成都医学院第一附属医院,https://www.cyfyy.cn/gzb_yygg_rczp,https://www.cyfyy.cn/,ul.mb80 li,a p,a
+成都市新都区第三人民医院,https://www.xdqdsrmyy.com/home/news/list/id/65/zid/65.html,https://www.xdqdsrmyy.com/,ul.ullist li,a,a
+成都市温江区人民医院,https://www.wj120.com.cn/news_rczp/,https://www.wj120.com.cn/,ul.news-list li,h2 a,h2 a
+成都市温江区中医医院,https://www.wjqzyyy.com/index.php?m=content&c=index&a=lists&catid=48,https://www.wjqzyyy.com/,ul.article-list li,h2.title,a.article-item-target
+四川省八一康复中心（四川省康复医院）,https://www.81kf.cn/ywgk/zszp.htm,https://www.81kf.cn/,ul.lb-list li,a.txt-elise,a
+成都中医药大学第二附属医院,https://www.czyefy.com/get/class/xwzx/rczp/index.html,https://www.czyefy.com/,ul.pageTPList li,div.title a,div.title a
+成都市第七人民医院,https://www.cd7yy.com/recruitment/,https://www.cd7yy.com/,ul#news-list li div.news-list-summary,h2 a,h2 a
+成都市双流区第一人民医院,https://www.cdslyyy.com/239563-308525.html,https://www.cdslyyy.com/,ul#boxNewsList li.sumary_list div.newCont div,a.titleSet,a.titleSet
+金堂县第二人民医院,https://jtxdermyy.com/Article/List?id=292,https://jtxdermyy.com/,div._4_item,,
+金堂县中医医院,https://www.jtxzyyy.com/rencaizhaopin/,https://www.jtxzyyy.com/,div.list,div.title,a
+都江堰市人民医院,https://www.djysrmyy.cn/list.aspx?mid=129,https://www.djysrmyy.cn/,ul.list li,div.title,a
+四川省第二退役军人医院,http://www.scvh120.com/announcement_zpxx/,http://www.scvh120.com/,ul.news-list li,div.title h2 a,h2 a
+崇州市人民医院,https://www.xn--gmqr3i68juyaffp44fww1e.cn/tzgg_zpgg,https://www.xn--gmqr3i68juyaffp44fww1e.cn/,div.list-notice001 ul li,a,a
+简阳市中医医院,https://www.jyzy120.cn/tender_hr/,https://www.jyzy120.cn/,div.info-list ul li,a,a
+简阳市人民医院,https://jy120.cn/news.aspx?mid=116,https://jy120.cn/,ul.research-news li,a,a
+成都市中西医结合医院,https://www.cdzxy.com/tender_hr/,https://www.cdzxy.com/,div.info-list li,a,a
+成都上锦南府医院,https://www.wchscu.cn/hxsj/zhaoshengzhaopin.html,https://www.wchscu.cn/hxsj/index.html,div.list div,div.tit.wto a,div.tit.wto a
+自贡市第一人民医院,https://www.zgno1hos.com.cn/list/yygg/zxls.html,https://www.zgno1hos.com.cn/,div.xwlist ul li,h3,a
+自贡市第四人民医院,https://www.zg120.cn/Di/Jobs/1.html,https://www.zg120.cn/,ul li,span.wz,a.link
+自贡市第三人民医院,https://www.zgsyy.cn/Faculty/Recruit-List-417.html,https://www.zgsyy.cn/,ul li,p.hh1,a
+自贡市精神卫生中心,https://zgmhc.cn/ywgk/xg-List-111.html,https://zgmhc.cn/,div.qie.nrxs ul li,a,a
+自贡市中医医院,https://www.zgszyyy.cn/zp-List-191.html,https://www.zgszyyy.cn/,div.list_01 ul li,div.text_1.hh1,a
+荣县人民医院,https://www.zgrxrmyy.cn/Recruit-List-41.html,https://www.zgrxrmyy.cn/,div.qie ul li,a,a
+富顺县人民医院,https://www.fsx120.cn/List_1_487.html,https://www.fsx120.cn/,div.c03_list ul li,p.wz1.hh1,a
+富顺县中医医院,https://www.fsxzyyy.cn/rczp-List-422.html,https://www.fsxzyyy.cn/,div.list_02 ul li,span.myfwb,a
+攀枝花市中西医结合医院,https://www.pdfy999.cn/index/lists/25,https://www.pdfy999.cn/,div.news-list-content,h2,a
+攀枝花市中心医院,https://www.cpch1965.cn/h-col-606.html,https://pzhszxyy.cpch1965.cn/,div.m_news_list.m_news_col_1.head_style_0 div,span.title_content,div.news_title a
+西南医科大学附属医院,https://www.ahswmu.cn/list/zpxx.html,https://www.ahswmu.cn/,ul li,h3 a,h3 a
+泸州市中医医院,http://www.lzszyyy.com/list/10.html,http://www.lzszyyy.com/,ul.ds,a,a
+西南医科大学附属口腔医院,http://www.xnykdkq.com/news_yzfw/,http://www.xnykdkq.com/,ul.info-list li,a,a
+泸县第二人民医院,https://www.lxery.com/go.htm?k=zhao_pin_xin_xi&url=home,https://www.lxery.com/,ul.notice_box li,div.notice_title,a
+德阳市人民医院,https://www.dy120.net/yygg_zpgg,https://www.dy120.net/,div.list-notice001 ul li,a p,a
+德阳市口腔医院,https://www.dykq120.cn/index.php/lists/53.html,https://www.dykq120.com/,ul.info-list li,a,a
+德阳市第六人民医院(东汽医院）,https://www.dylyy.com/go-c19.htm,https://www.dylyy.com/,ul.w li ,span.title.df-flex-auto.th,a.df.align-center.oh
+中江县人民医院,https://www.zjxrmyy.cn/go-c27.htm,https://www.zjxrmyy.cn/,div.max ul li,a p:nth-of-type(1),a
+广汉市人民医院,https://www.ghsrmyy.com/news_pub/,https://www.ghsrmyy.com/,div.info-list ul li,a,a
+四川绵阳四0四医院,https://scmy404.com/Article/list/1670-0-1.html,https://scmy404.com/,div#article_txt.news_list ul li,a,a
+绵阳市中医医院,https://www.myszyyy.cn/recruitment/recruitment/user/notice,https://www.myzyy.com/,ul.notice-list li,p.tit,i.el-icon
+绵阳市中心医院,https://www.myszxyy.cn/news_rczp/,https://www.myszxyy.cn/,div.info-list ul li,a,a
+三台县人民医院,https://www.stx120.cn/go-c76.htm,https://www.stx120.cn/,ul.clearfix li,h3,a
+江油市人民医院,https://www.scjysrmyy.com/html/News/GongGao/RenYuanZhaoPin/,https://www.scjysrmyy.com/,div.c_list_txt.clearfix ul li,a,a
+江油市中医医院,https://www.jyszyyy.cn/News/List.Asp?SortID=10,https://www.jyszyyy.cn/News/,tr[height='30']:has(a[href*='View.asp?ID=']),a[href*='View.asp?ID='],a[href*='View.asp?ID=']
+广元市第一人民医院,https://www.gys072.cn/list.html?cls1=8&cls2=23,https://www.gys072.cn/,div.divinfowai,a font,a
+剑阁县中医医院,http://www.jgxzyy.cn/list.html?cls1=12&cls2=37&cls3=74,http://www.jgxzyy.cn/,div.divinfo21,h4,a
+遂宁市第一人民医院,https://www.snyyy.cn/rencaizhaopin/,https://www.snyyy.cn/,ul.listt li,a.txt8x,a.txt8x
+遂宁市中心医院,https://www.sns120.cn/#/column-list?columnId=1834041682323648514,https://www.sns120.cn/,div.doc-list div,span.desc,span
+蓬溪县人民医院,https://www.snpxxrmyy.cn/plus/list.php?tid=596,https://www.snpxxrmyy.cn/,div.list1 ul li,a,a
+射洪市人民医院,https://www.shehong120.cn/news_rczp/,https://www.shehong120.cn/,ul.info-list li,a,a
+内江市第一人民医院,https://www.njyy.com.cn/News/lists/id/33.html,https://www.njyy.com.cn/,dl dd,div.a1 a,a
+内江市中医医院,https://www.njszyy.com/hos_hr/,https://www.njszyy.com/,ul.info-list,a,a
+内江市第二人民医院,https://www.njs2yy.com/news_tender/3/,https://www.njs2yy.com/,div.info-list ul li,a,a
+内江市东兴区人民医院,http://www.dx120.org/news_apply/,http://www.dx120.org/,div.info-list li,a,a
+隆昌市中医医院,https://www.lczhongyi.com/go.htm?k=ren_cai_zhao_pin&url=news/textlist,https://www.lczhongyi.com/,div.textlist ul li,a h3,a
+乐山市人民医院,https://www.leshan-hospital.com.cn/aspx/list_46B9F55E93531886_1.html,https://www.leshan-hospital.com.cn/aspx/index.html,div.content_list ul li,a,a
+乐山市中医医院,https://www.lsszyyy.cn/col.jsp?id=112,https://www.lsszyyy.cn/,div.newsList.J_newsList div,a.fk-newsListTitle,a.fk-newsListTitle
+乐山市精神卫生中心,https://www.lssjswszx.cn/h-col-101.html,https://www.lssjswszx.cn/,div.m_news_info,span.title_content,a
+南充市中心医院,https://sdykdxfsbjazyyncyy.nc120.cn/col.jsp?id=126,https://sdykdxfsbjazyyncyy.nc120.cn/,div.m_news_list.m_news_col_1.head_style_0 div,span.title_content,div.news_title a
+南充市中医医院,https://www.nczyyy.cn/index/lists/106,https://www.ncszyyy.com/,ul.clear.yuanDian.mar_tb15.pageNewList.color_0 li,h5,a.clear
+川北医学院附属医院,https://www.hospital-nsmc.com.cn/hzb_rcgz_tzgg,https://www.hospital-nsmc.com.cn/,ul.mb80 li,a,a
+南充市身心医院（南充市第六人民医院）小龙分院（南充市优抚医院）,https://ncsxyy.cn/news/zpxx/,https://www.ncsxyy.com/,ul.news-list li,h2 a,h2 a
+阆中市人民医院,https://www.lz120.com/announ.aspx?category_id=25,https://www.lz120.com/,ul.pnews-notice li,h3.title,a
+眉山市中医医院（眉山市东坡区人民医院）,https://www.mssrmyy.cn/index.php?m=home&c=Lists&a=index&tid=108,https://www.mssrmyy.cn/,ul#box li,a p,a
+宜宾市第一人民医院,https://www.yb999.com/zhaoping/Default.aspx?bid=101,https://www.yb999.com/,div.lb,a span:first-child,a
+宜宾市第三人民医院,https://www.666120.cn/zpxx,https://www.666120.cn/,a[href^="/zpxx_detail?id="],span.el-text,a[href^="/zpxx_detail?id="]
+宜宾市第四人民医院,https://www.ybsdsrmyy.com/job/,https://www.ybsdsrmyy.com/,li:has(> a[href^="/job/"][href$=".html"]),a[href^="/job/"][href$=".html"],a[href^="/job/"][href$=".html"]
+宜宾市中医医院,https://www.ybszyy.com.cn/go.htm?k=tong_zhi_gong_gao&url=news/textlist,https://www.ybszyy.com.cn/,div.textlist ul li,h3,a
+屏山县人民医院,https://www.psxrmyy.com/index.php?m=content&c=index&a=lists&catid=33,https://www.psxrmyy.com/index.php?m=content&c=index&a=lists&catid=19,ul.newsList li,a,a
+广安市广安区人民医院,https://www.gaqrmyy.com/yiyuangonggao/zhaopinxinxi/,https://www.gaqrmyy.com/,div.news-ny-content ul li,a,a
+广安市人民医院/四川大学华西医院广安医院/广安市人民医院互联网医院,https://www.gasrmyy.com/yiyuangonggao/renshixinxi/,https://www.gasrmyy.com/,ul.txt-list li,b,a
+岳池县中医医院,http://www.ycxzyyy.cn/plus/list.scjg?tid=627,http://www.ycxzyyy.cn/,ul.txt-list li,a,a
+岳池县人民医院,https://www.ycxrmyy.sc.cn/gw_yygg_zpxx,https://www.ycxrmyy.sc.cn/,ul.mt40 li,a span,a
+达州市中西医结合医院,https://www.dz2yy.com/News/Category.asp?ID=82,https://www.dz2yy.com/,div.list1 li,a,a
+达州市民康医院,http://www.dzsmkyy.com/index.php?m=content&c=index&a=lists&catid=27,http://www.dzsmkyy.com/,div.liebiaoli ul li,a,a
+大竹县人民医院,https://www.scdz120.com/go-c49.htm,https://www.scdz120.com/,ul.w li,span.title.df-flex-auto.th,a.df.align-center.oh
+雅安市人民医院（雅安市人民医院互联网医院）,https://www.yasyy.com/news/yasyy_1801/,https://www.yasyy.com/,tr.xx,td.f-14 a,td.f-14 a
+雅安市雨城区人民医院（雅安市第二人民医院）,http://www.yaeyy.com/news/rczp/,http://www.yaeyy.com/,ul li,a,a
+雅安市中医医院(雅安市中医医院互联网医院）,https://www.scsyaszyyy.com/yydt_zpxx,https://www.scsyaszyyy.com/,ul.mt40 li,p a,a
+通江县人民医院,https://www.tjxrmyy.cn/navigate/zhaopingongzuo.html,https://www.tjxrmyy.cn/,ul.news-list li,h3.name label,a.clearfix
+资阳市中心医院,https://www.sczy120.com/rcyj_zpgg1/,https://www.sczy120.com/,ul.news-text li,h2 a,h2 a
+资阳市中医医院,https://www.sczyzyy.cn/index.php?m=content&c=index&a=lists&catid=106,https://www.sczyzyy.cn/,div.wzbk3 ul li,a.nerr14,a.nerr14
+四川省乐至县中医医院,https://lzzhongyi.cn/lists/10?page=1,https://lzzhongyi.cn/,div.clear.col_66.mar_b15.imgList.newsList.color_0 li,a.ellipsis.tra_03.color_3,a.ellipsis.tra_03.color_3
+凉山彝族自治州中西医结合医院,https://www.lszzxy.com/public_guide/,https://www.lszzxy.com/,ul.info-list li,a,a
+川投西昌医院,http://www.xcsyy.com.cn/index.php?m=content&c=index&a=lists&catid=137,http://xcsyy.com.cn/,div.list-rbox ul li,a,a
+成都市新都区中医医院,https://www.xdzyy.net/list/11.html,https://www.xdzyy.net/,ul li,a,a
+绵竹市人民医院,https://www.mzsrmyy.com/ywgk_rczp,https://www.mzsrmyy.com/,ul.mt30 li,p a,p a
+绵阳市第三人民医院,http://www.scmy120.com/nrgl/list-69.html,http://www.scmy120.com/,section.newslist ul li,a,a
+四川省科学城医院,https://www.kxc120.cn/zbzp/rszp.htm,https://www.kxc120.cn/,ul.lb-ul li,a.txt-elise,a
+四川省南充精神卫生中心,https://www.scsncjwzx.com/yygg/,https://www.scsncjwzx.com/,ul.list6 li,a,a
+重庆大学附属涪陵医院,https://www.cdflyy.cn/job/13745983.html,https://www.cdflyy.cn/,.e_container-3,a,a
+重庆市奉节县人民医院,https://www.fjrmyy.com/home/news/personnel.html,https://www.fjrmyy.com/,ul.shadow-list li,.ellipsis.flex-c,a
+重庆市精神卫生中心,https://www.cqsjwzx.com/html/rczp/,https://www.cqsjwzx.com/,div.xwzx.container > ul > li,h2,a
+成都高新区妇女儿童医院,https://www.hxgxfy.cn/recruitment-information.html?ptype=zpxx&type=yyxx,https://www.hxgxfy.cn/,ul.text-box li,,
+重庆人事考试中心,https://rlsbj.cq.gov.cn/ywzl/rsks/sydwks/,https://rlsbj.cq.gov.cn/,ul.rsj-list1 li,a,a
+成都第一骨科医院,https://www.oneguke120.cn/post-sub/20230531160300.html,https://www.oneguke120.cn/,div.col-xs-9.pl0 div,p.article_title a,p.article_title a
+眉山妇幼保健院,https://www.msfybj.com/news_job/,https://www.msfybj.com/,div.info-list ul li,a,a
+成都市郫都区人民医院,https://www.pdqrmyy.cn/infolist/68/index.html,https://www.pdqrmyy.cn/,div.article_list div,h2,h2 a
+三六三医院,https://www.363120.com/gzb_zbzp_zpzq,https://www.363120.com/,ul.mt30 li,p a,p a
+成都市人力资源和社会保障局,https://cdpta.cdrsigc.com/netpage/ortherlist_all.do?pageSize=30&ifall=1&id=989,,ul.new_list ul li, a, a
+广安市人民医院,http://gasrmyy.com/yiyuangonggao/renshixinxi/, ,ul.txt-list li,a,a
+简阳市人民医院,https://jy120.cn/news.aspx?mid=116&sid=,,ul.research-news li,div a,div a
+四川省第四人民医院,https://m.scsdsrmyy.cn/ennews_recruitment/,,ul li.mui-card,div h4,div a
+四川省八一康复中心,https://www.81kf.cn/ywgk/zszp/zpxx.htm,,ul.lb-list li,a,a
+成都市金牛区妇幼保健院,https://www.cdjnbjy.com/news.aspx?mid=166&sid=,,div.dqjsL_list ul li,a div,a
+成都市血液中心,https://www.cdxyzx.cn/renshigonggao.html,,div.news-list.adpat,a,a
+重庆市公共卫生医疗救助中心,https://www.cqgwzx.com/rsrc?sort=%E4%BA%BA%E4%BA%8B%E4%BA%BA%E6%89%8D&tabDataId=59&tabInfocusId=62,,,,
+两江新区人才招聘,https://www.cqljzp.com/announcement/,,ul.announcement_list li,a,a
+重庆市红十字会医院,https://www.cqshszhyy.cn/html/xwzx/rczp/,,ul.listSeven li,a div.text div,a
+成都中医药大学第二附属医院,https://www.czyefy.com/get/class/xwzx/rczp/index.html,,ul.pageTPList li,a,a
+德阳市中西医结合医院,https://www.dyszxyjhyy.com/go.htm?k=zui_xin_gong_gao&url=textlist&pageIndex=1,,div.xinwen_bottom ul li,span[class*="txt-cut"],a
+达州市第一人民医院,https://www.dz1yy.cn/list/50.html,,ul.yyggul li,a,a
+达州市中心医院,https://www.dzcch.com/list/list_28_0.html,,ul.nnew_list li,a,a
+重庆市大足区人民医院,https://www.dzqrmyy.com/index.php/recruitment,,div.navBox a,a.flex-jsb div span,a
+重庆市涪陵区人民医院,https://www.flqrmyy.com/list-50.html,,table tr:has(a[href*="/show-"]),a[href*="/show-"],a[href*="/show-"]
+广安市广安区人民医院,https://www.gaqrmyy.com/yiyuangonggao/zhaopinxinxi/,,ul li,a,a
+广安市妇幼保健院,https://www.gasfybjy.cn/gonggao.html,,div.m_news_list div,div.news_title a,div.news_title a
+广元市妇幼保健院,https://www.gyfybj.cn/list.html?cls1=2&cls2=73,,div.info_ul div.listLi.nopic,h4,a
+广元市中心医院,https://www.gyszxyy.cn/list.html?cls1=2&cls2=20,,ul.pNews-list li,a,a
+广元市中医医院,https://www.gyszyy.cn/list.html?cls1=2&cls2=17&cls3=&page=1,,div div.divinfowai,a,a
+剑阁县人民医院,https://www.jgrmyy.cn/list.html?cls1=13&cls2=30,,div div.divinfowai,a,a
+四川省科学城医院,https://www.kxc120.cn/zbzp/rszp.htm,,ul.lb-ul li,a,a
+重庆市开州区中医院,https://www.kzqzyy.com/news_17/,,ul li,div.list_news_info,a
+乐山市市中区妇幼保健院,https://www.leshan.cn/html/list/A5DA78F4AEF50D08/list_A5DA78F4AEF50D08_1.html?spm=zm5142-001.0.0.3.PYiqSb,,ul.list_content li,a,a
+乐山市市中区人民医院,https://www.lssszqrmyy.cn/h-col-165.html,,div.m_news_list div,div.news_title a,div.news_title a
+阆中市中医医院,https://www.lzzyyy.com/figure/list.jspx?channel=%E9%80%9A%E7%9F%A5%E5%85%AC%E5%91%8A,,ul.news_list_main li,a,a
+眉山市人民医院,https://www.mssrmyy.cn/index.php?m=home&c=Lists&a=index&tid=108,,#box li.art_5,a,a
+绵阳市人民医院,https://www.mysrmyy.cn/video/,,ul.news-list li,a,a
+成都青白江区中医医院,https://www.qbjzyy.cn/go.htm?k=ren_shi_zhao_pin&url=text_list,,div.zybj div.zybj-left,a,a
+四川省第二中医医院,https://www.sc2zyy.com/news.aspx?mid=414&sid=,,a[href*="newsshow.aspx?mid=414&id="],a[href*="newsshow.aspx?mid=414&id="],a[href*="newsshow.aspx?mid=414&id="]
+绵阳江油市妇幼保健院,https://www.scjysfybjy.cn/html/News/GongGao/,,div.info-list ul li,a,a
+绵阳市骨科医院,https://www.scsmysgkyy.cn/,,ul.noticeHome li,a,a
+四川省卫生人才健康管理平台,http://www.scwsrc.com/news/other/2,,ul li,a,a
+乐山市沙湾区人民医院,https://www.swqrmyy.cn/col.jsp?id=126,,#newsList573 .J_newsListLine,a.fk-newsListTitle,a.fk-newsListTitle
+达州市第三人民医院,https://www.xyy120.cn/index.php?m=content&c=index&a=lists&catid=35,,div.xyy_liebiao ul li,a,a
+宜宾人力资源市场企业招聘,https://www.ybrc128.com/pages/dynamic/articles?block=RQ0N7a1b2LzCBFHk,,.page_left__41Y5l li,a,a
+资阳市人民医院,https://www.zysrmyy.com/hos_hr/,,ul.info-list li,a,a

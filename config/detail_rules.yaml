@@ -1,0 +1,18 @@
+# 可选的详情页提取规则。
+# 不配置某个站点时，详情流水线会走通用提取：
+# 1. 站点选择器（若存在）
+# 2. readability-lxml 兜底
+# 3. body 回退
+
+sites:
+  site_144_144:
+    content_selectors:
+      - ".art .content"
+    remove_selectors:
+      - ".fenxiang"
+      - ".dqwz"
+      - ".ejlm_m"
+      - ".nybanner"
+      - "script[src*='gethits.asp']"
+    attachment_selectors:
+      - ".art .content a[href]"

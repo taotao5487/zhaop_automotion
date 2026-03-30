@@ -1,0 +1,29 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# 告警规则文件
+rule_files:
+  # - "alert_rules.yml"
+
+# 告警管理器配置
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# 爬虫作业
+scrape_configs:
+  - job_name: 'crawler'
+    static_configs:
+      - targets: ['crawler:9090']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node_exporter:9100']

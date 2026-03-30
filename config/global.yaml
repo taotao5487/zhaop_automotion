@@ -1,0 +1,155 @@
+# 全局爬虫配置
+
+database:
+  path: "data/jobs.db"
+  echo: false  # 是否输出SQL日志
+  cleanup_days: 180  # 自动清理多少天前的数据
+
+crawler:
+  request_timeout: 30  # 请求超时时间（秒）
+  max_retries: 3  # 最大重试次数
+  delay_between_requests: 1.0  # 请求间隔（秒）
+  concurrent_sites: 3  # 并发爬取的网站数量
+  incremental_enabled: true  # 是否启用增量爬取
+  incremental_hours: 1  # 增量爬取时间间隔（小时）
+
+  # User-Agent配置
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  user_agents:
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0"
+
+  # 仅对服务端证书异常站点放宽SSL校验（避免全局关闭）
+  ssl_relax_sites:
+    - "site_2_2"
+    - "site_46_46"
+    - "site_56_56"
+    - "site_84_84"
+    - "site_94_94"
+    - "site_101_101"
+    - "site_127_127"
+    - "site_152_152"
+    - "site_162_162"
+    - "site_179_179"
+
+waf:
+  enable_detection: true  # 是否启用WAF检测
+  enable_bypass: true  # 是否启用WAF绕过
+  stealth_mode: true  # 是否启用隐身模式
+  dynamic_mode: false  # 是否启用动态浏览器模式（较慢）
+  dynamic_timeout: 60  # 动态浏览器超时时间（秒）
+
+  # 代理配置（可选）
+  proxy_enabled: false
+  proxies: []
+  # 示例：
+  # proxies:
+  #   - "http://proxy1.example.com:8080"
+  #   - "http://proxy2.example.com:8080"
+
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "logs/crawler.log"  # 日志文件路径
+  max_size: 10485760  # 10MB
+  backup_count: 5  # 保留的日志文件数量
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+monitoring:
+  enable_metrics: false  # 是否启用监控指标
+  metrics_port: 9090  # Prometheus指标端口
+  health_check_url: "/health"  # 健康检查端点
+
+  # 报警配置（可选）
+  alert_enabled: false
+  alert_webhook: ""  # Slack/Discord/钉钉Webhook地址
+  alert_threshold_failures: 3  # 连续失败多少次触发报警
+
+scheduler:
+  enable_cron: false  # 是否启用定时任务
+  cron_schedule: "0 2 * * *"  # 每天凌晨2点运行，cron表达式
+  random_delay_minutes: 30  # 随机延迟分钟数，避免同时触发
+
+validation:
+  required_fields: ["title", "url", "publish_date"]  # 必要字段
+  title_min_length: 5  # 标题最小长度
+  title_max_length: 200  # 标题最大长度
+  url_pattern: "^https?://.+"  # URL正则验证
+  date_format: "%Y-%m-%d"  # 日期格式
+  max_days_old: 90  # 最多爬取多少天前的数据
+
+# 网站配置目录
+sites_directory: "config/sites"
+
+# 数据处理
+data_processing:
+  enable_deduplication: true  # 是否启用去重
+  deduplication_field: "url"  # 去重字段
+  enable_validation: true  # 是否启用数据验证
+  enable_transformation: true  # 是否启用数据转换
+
+  # 字段转换规则
+  field_transformations:
+    publish_date:
+      input_formats:
+        - "%Y-%m-%d"
+        - "%Y/%m/%d"
+        - "%d/%m/%Y"
+        - "%Y年%m月%d日"
+      output_format: "%Y-%m-%d"
+    title:
+      strip_whitespace: true
+      remove_extra_spaces: true
+    hospital:
+      default_value: "未知医院"
+      capitalize: true
+
+recruitment_filter:
+  enabled: true
+  keep_keywords:
+    - "招聘"
+    - "招考"
+    - "招录"
+    - "引进"
+    - "人才"
+    - "医师"
+    - "护士"
+    - "规培"
+    - "住培"
+    - "博士后"
+    - "面试"
+    - "笔试"
+    - "资格复审"
+    - "录用"
+    - "应聘"
+  exclude_keywords:
+    - "招标"
+    - "采购"
+    - "比选"
+    - "遴选"
+    - "询价"
+    - "谈判"
+    - "磋商"
+    - "中标"
+    - "成交"
+    - "废标"
+    - "流标"
+    - "维保"
+    - "项目"
+    - "调研"
+    - "征集"
+    - "设备"
+    - "耗材"
+    - "试剂"
+
+review_queue:
+  enabled: true
+  recent_days: 30
+  auto_open_browser: true
+  hide_previously_discarded: true
+  hide_old_without_keep: true
+
+export:
+  enabled: true
+  directory: "data/exports"

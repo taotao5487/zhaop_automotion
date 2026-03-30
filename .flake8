@@ -1,0 +1,16 @@
+[flake8]
+max-line-length = 160
+exclude =
+    .git,
+    __pycache__,
+    data
+extend-ignore =
+    E302,
+    E305,
+    W291,
+    W293,
+    W391
+per-file-ignores =
+    scripts/import_subscriptions_from_article_urls.py:E402
+    Wechat_api/wechat-download-api/scripts/import_subscriptions_from_article_urls.py:E402
+    */scripts/import_subscriptions_from_article_urls.py:E402

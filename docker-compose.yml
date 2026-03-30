@@ -1,0 +1,21 @@
+services:
+  wechat-api:
+    image: tmwgsicp/wechat-download-api:latest
+    container_name: wechat-download-api
+    restart: unless-stopped
+    working_dir: /app
+    command: ["python", "app.py"]
+    ports:
+      - "5001:5000"
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./.env:/app/.env
+    environment:
+      - TZ=Asia/Shanghai
+      - HOST=0.0.0.0
+      - PORT=5000
+      - DEBUG=false
+    dns:
+      - 223.5.5.5
+      - 114.114.114.114

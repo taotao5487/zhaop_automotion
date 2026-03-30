@@ -1,0 +1,178 @@
+# 网站爬虫配置模板
+# 复制此文件并重命名为 {site_name}.yaml，然后修改相应配置
+
+site_name: "example_site"  # 网站标识，英文小写，不含空格
+base_url: "https://www.example.com"  # 网站基础URL
+enabled: true  # 是否启用该网站爬取
+priority: 1  # 爬取优先级（1-10，数字越小优先级越高）
+description: "示例招聘网站"  # 网站描述
+
+# 爬取策略
+crawling:
+  start_urls:
+    - "https://www.example.com/jobs"  # 起始URL列表
+  pagination:
+    enabled: true  # 是否启用分页
+    type: "url_param"  # 分页类型：url_param, css_selector, xpath, javascript
+    pattern: "page={page}"  # 分页模式，{page}会被替换为页码
+    start_page: 1  # 起始页码
+    max_pages: 10  # 最大爬取页数
+    page_increment: 1  # 页码增量
+  request_interval: 2.0  # 请求间隔（秒）
+  timeout: 30  # 请求超时时间（秒）
+  max_retries: 3  # 最大重试次数
+  follow_links: false  # 是否跟随链接到详情页
+
+# 解析规则
+parsing:
+  # 列表页解析
+  list_page:
+    container_selector: "div.job-list"  # 职位列表容器选择器
+    item_selector: "li.job-item"  # 单个职位项选择器
+
+    # 字段提取规则
+    fields:
+      title:
+        selector: "h2.job-title a"  # CSS选择器
+        type: "text"  # 提取类型：text, attr, html
+        attr: null  # 属性名（当type为attr时使用）
+        required: true  # 是否必需字段
+        transform: "strip"  # 转换函数：strip, lowercase, uppercase
+      url:
+        selector: "h2.job-title a"
+        type: "attr"
+        attr: "href"
+        required: true
+        transform: "absolute_url"  # 转换为绝对URL
+      publish_date:
+        selector: "span.publish-time"
+        type: "text"
+        required: true
+        date_format: "%Y-%m-%d"  # 日期格式
+        transform: "parse_date"
+      hospital:
+        selector: "div.hospital-name"
+        type: "text"
+        required: false
+        default: "未知医院"  # 默认值
+      location:
+        selector: "span.job-location"
+        type: "text"
+        required: false
+      salary:
+        selector: "span.salary"
+        type: "text"
+        required: false
+        transform: "extract_salary"  # 提取薪资范围
+
+  # 详情页解析（如果follow_links为true）
+  detail_page:
+    enabled: false  # 是否启用详情页解析
+    fields:
+      description:
+        selector: "div.job-description"
+        type: "html"
+        required: false
+        transform: "clean_html"
+      requirements:
+        selector: "div.job-requirements"
+        type: "html"
+        required: false
+      contact_info:
+        selector: "div.contact-info"
+        type: "text"
+        required: false
+
+# WAF处理策略
+waf_strategy:
+  detection_enabled: true  # 是否启用WAF检测
+  bypass_enabled: true  # 是否启用WAF绕过
+
+  # 绕过策略优先级
+  strategies:
+    - name: "stealth"  # 隐身模式
+      enabled: true
+      priority: 1
+    - name: "cloudscraper"  # cloudscraper库
+      enabled: true
+      priority: 2
+    - name: "dynamic_browser"  # 动态浏览器
+      enabled: false  # 默认禁用，较慢
+      priority: 3
+
+  # 特定WAF的处理配置
+  cloudflare:
+    challenge_timeout: 30  # 挑战超时时间
+    retry_on_failure: true  # 失败时重试
+  captcha:
+    enable_manual: false  # 是否启用手动验证码处理
+    manual_timeout: 120  # 手动处理超时时间
+
+# 数据验证规则
+validation:
+  required_fields: ["title", "url", "publish_date"]  # 必需字段
+  field_rules:
+    title:
+      min_length: 5
+      max_length: 200
+      pattern: null  # 正则表达式
+    url:
+      pattern: "^https?://.+"  # URL必须为http/https
+      domain_whitelist: []  # 域名白名单
+      domain_blacklist: []  # 域名黑名单
+    publish_date:
+      min_date: "2020-01-01"  # 最小日期
+      max_date: "now"  # 最大日期（now表示当前日期）
+      format: "%Y-%m-%d"  # 日期格式
+    salary:
+      pattern: '^\d+-\d+$'  # 薪资格式：10000-20000
+
+# 数据后处理
+post_processing:
+  field_mappings:  # 字段映射
+    hospital: "employer"  # 将hospital字段映射为employer
+    location: "work_location"
+
+  field_defaults:  # 字段默认值
+    source_site: "{site_name}"  # 使用网站标识
+    crawl_time: "now"  # 当前时间
+
+  filters:
+    - field: "publish_date"
+      operator: ">="
+      value: "30 days ago"  # 只保留30天内的数据
+    - field: "title"
+      operator: "not_contains"
+      value: ["兼职", "实习"]  # 过滤包含这些关键词的职位
+
+  transformers:
+    - field: "title"
+      function: "strip"
+    - field: "url"
+      function: "normalize_url"
+    - field: "publish_date"
+      function: "format_date"
+      args:
+        format: "%Y-%m-%d"
+
+# 监控和报告
+monitoring:
+  enable_stats: true  # 是否启用统计
+  success_threshold: 0.8  # 成功率阈值（低于此值报警）
+  alert_on_empty: true  # 数据为空时报警
+  alert_on_validation_fail: true  # 验证失败时报警
+
+# 测试配置（用于开发和调试）
+testing:
+  test_url: "https://www.example.com/jobs"  # 测试URL
+  sample_size: 5  # 测试时爬取的样本数量
+  validate_output: true  # 是否验证输出
+  debug_mode: false  # 调试模式（输出更多信息）
+
+# 备注
+notes: |
+  1. 此网站使用分页查询，page参数控制页码
+  2. 职位列表在div.job-list容器中
+  3. 每个职位项是li.job-item
+  4. 发布日期格式为YYYY-MM-DD
+  5. 遇到Cloudflare WAF时使用cloudscraper绕过

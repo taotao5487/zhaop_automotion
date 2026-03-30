@@ -1,0 +1,143 @@
+# 简阳市中医医院招聘信息网站配置
+# 网站: https://www.jyzy120.cn/tender_hr/
+
+site_name: "jyzy120"
+base_url: "https://www.jyzy120.cn"
+enabled: true
+priority: 1
+description: "简阳市中医医院招聘信息网"
+
+# 爬取策略
+crawling:
+  start_urls:
+    - "https://www.jyzy120.cn/tender_hr/"
+  pagination:
+    enabled: true
+    type: "url_path"  # 分页在URL路径中
+    pattern: "/tender_hr/{page}/"  # 页码替换模式
+    start_page: 1
+    max_pages: 10
+    page_increment: 1
+  request_interval: 3.0  # 请求间隔（秒）
+  timeout: 30  # 请求超时时间（秒）
+  max_retries: 3  # 最大重试次数
+  follow_links: false  # 是否跟随链接到详情页（暂时禁用）
+
+# 解析规则
+parsing:
+  list_page:
+    container_selector: "div.info-list ul"  # 职位列表容器选择器
+    item_selector: "li"  # 单个职位项选择器
+
+    # 字段提取规则
+    fields:
+      title:
+        selector: "a"  # CSS选择器
+        type: "text"  # 提取类型：text, attr, html
+        required: true  # 是否必需字段
+        transform: "strip"  # 转换函数：strip, lowercase, uppercase
+      url:
+        selector: "a"
+        type: "attr"
+        attr: "href"
+        required: true
+        transform: "absolute_url"  # 转换为绝对URL
+      publish_date:
+        selector: "span"
+        type: "text"
+        required: true
+        date_format: "%Y-%m-%d"  # 日期格式
+        transform: "parse_date"
+      source_site:
+        type: "literal"  # 字面值，不需要选择器
+        value: "jyzy120"
+        required: true
+
+# WAF处理策略
+waf_strategy:
+  detection_enabled: true  # 是否启用WAF检测
+  bypass_enabled: true  # 是否启用WAF绕过
+
+  # 绕过策略优先级
+  strategies:
+    - name: "stealth"  # 隐身模式
+      enabled: true
+      priority: 1
+    - name: "cloudscraper"  # cloudscraper库
+      enabled: true
+      priority: 2
+    - name: "dynamic_browser"  # 动态浏览器
+      enabled: false  # 默认禁用，较慢
+      priority: 3
+
+  # 特定WAF的处理配置
+  cloudflare:
+    challenge_timeout: 30  # 挑战超时时间
+    retry_on_failure: true  # 失败时重试
+  captcha:
+    enable_manual: false  # 是否启用手动验证码处理
+    manual_timeout: 120  # 手动处理超时时间
+
+# 数据验证规则
+validation:
+  required_fields: ["title", "url", "publish_date", "source_site"]
+  field_rules:
+    title:
+      min_length: 5
+      max_length: 200
+      pattern: null  # 正则表达式
+    url:
+      pattern: "^https?://.+"  # URL必须为http/https
+    publish_date:
+      min_date: "2020-01-01"  # 最小日期
+      max_date: "now"  # 最大日期（now表示当前日期）
+      format: "%Y-%m-%d"  # 日期格式
+
+# 数据后处理
+post_processing:
+  field_mappings:  # 字段映射
+    source_site: "site"  # 将source_site字段映射为site
+
+  field_defaults:  # 字段默认值
+    hospital: "简阳市中医医院"  # 固定医院名称
+    location: "简阳"  # 工作地点
+    crawl_time: "now"  # 当前时间
+
+  filters:
+    - field: "publish_date"
+      operator: ">="
+      value: "30 days ago"  # 只保留30天内的数据
+
+  transformers:
+    - field: "title"
+      function: "strip"
+    - field: "url"
+      function: "normalize_url"
+    - field: "publish_date"
+      function: "format_date"
+      args:
+        format: "%Y-%m-%d"
+
+# 监控和报告
+monitoring:
+  enable_stats: true  # 是否启用统计
+  success_threshold: 0.8  # 成功率阈值（低于此值报警）
+  alert_on_empty: true  # 数据为空时报警
+  alert_on_validation_fail: true  # 验证失败时报警
+
+# 测试配置（用于开发和调试）
+testing:
+  test_url: "https://www.jyzy120.cn/tender_hr/"
+  sample_size: 3  # 测试时爬取的样本数量
+  validate_output: true  # 是否验证输出
+  debug_mode: false  # 调试模式（输出更多信息）
+
+# 备注
+notes: |
+  1. 网站首次访问需要设置visited=1 cookie，否则会显示空白页面并重载
+  2. 分页在URL路径中：/tender_hr/2/, /tender_hr/3/ 等
+  3. 职位列表在div.info-list ul容器中，每个职位是li
+  4. 每个职位包含一个a标签（标题和链接）和一个span标签（发布日期）
+  5. 发布日期格式为YYYY-MM-DD
+  6. 网站使用JavaScript设置cookie，爬虫需要处理此机制
+  7. 目前不爬取详情页，只获取列表页信息
