@@ -1137,7 +1137,63 @@ async def push_recruitment_article_to_shared_draft_series(
     source_url: Optional[str] = None,
     force: bool = False,
     series_key: str = rss_store.DEFAULT_OFFICIAL_DRAFT_SERIES_KEY,
+    push_all: bool = False,
+    limit: Optional[int] = None,
 ) -> Dict:
+    if push_all and source_url:
+        raise OfficialWechatDraftError("批量推送模式不支持同时指定 source_url")
+
+    if push_all:
+        max_items = int(limit or 1000)
+        rows = rss_store.get_recruitment_articles(
+            status="confirmed",
+            limit=max_items,
+            push_status="all" if force else "unpushed",
+        )
+        if not rows:
+            if force:
+                raise OfficialWechatDraftError("当前没有 confirmed 招聘文章可推送到共享草稿串")
+            raise OfficialWechatDraftError("当前没有未推送到共享草稿串的 confirmed 招聘文章")
+
+        results: List[Dict] = []
+        draft_media_ids: List[str] = []
+        status_counts: Dict[str, int] = {}
+
+        for row in rows:
+            result = await push_article_row_to_shared_draft_series(
+                row,
+                source_type="recruitment",
+                force=force,
+                series_key=series_key,
+            )
+            results.append({
+                "source_url": result.get("source_url", row.get("link", "")),
+                "title": result.get("title", row.get("title", "")),
+                "status": result.get("status", ""),
+                "append_mode": result.get("append_mode", ""),
+                "draft_media_id": result.get("draft_media_id", ""),
+                "batch_index": int(result.get("batch_index", 0) or 0),
+            })
+
+            status = str(result.get("status", "") or "")
+            if status:
+                status_counts[status] = status_counts.get(status, 0) + 1
+
+            draft_media_id = (result.get("draft_media_id") or "").strip()
+            if draft_media_id and draft_media_id not in draft_media_ids:
+                draft_media_ids.append(draft_media_id)
+
+        return {
+            "success": True,
+            "mode": "batch",
+            "total_candidates": len(rows),
+            "processed_count": len(results),
+            "created_draft_count": len(draft_media_ids),
+            "draft_media_ids": draft_media_ids,
+            "status_counts": status_counts,
+            "results": results,
+        }
+
     if source_url:
         row = _extract_article_row(source_url=source_url, force=True)
     else:

@@ -58,6 +58,28 @@ DEFAULT_RULES = {
         "寻找发光的你",
         "寻找发光的您",
     ],
+    "title_exclude": [
+        "公示",
+        "名单",
+        "体检",
+        "总成绩",
+        "成绩",
+        "资格复审",
+        "复审",
+        "拟聘用",
+        "拟录用",
+        "入围",
+        "入闱",
+        "进入面试",
+        "面试相关事项",
+        "录取",
+        "患者",
+        "志愿者",
+        "筛查",
+        "公益",
+        "活动",
+        "考核公告",
+    ],
     "content_include": [
         "招聘",
         "岗位",
@@ -71,6 +93,16 @@ DEFAULT_RULES = {
         "招聘条件",
         "报名方式",
         "报名时间",
+        "薪资待遇",
+        "人才引进",
+    ],
+    "content_confirm": [
+        "招聘",
+        "岗位",
+        "应聘",
+        "岗位职责",
+        "招聘条件",
+        "报名方式",
         "薪资待遇",
         "人才引进",
     ],
@@ -91,9 +123,8 @@ DEFAULT_RULES = {
 }
 
 SHORT_TEXT_REVIEW_THRESHOLD = 80
-TITLE_PRIORITY_KEYWORDS = [
+TITLE_AUTO_CONFIRM_KEYWORDS = [
     "招聘",
-    "招募",
     "公开招聘",
     "招聘公告",
     "招聘启事",
@@ -103,32 +134,6 @@ TITLE_PRIORITY_KEYWORDS = [
     "人才引进",
     "招贤纳士",
     "聘用",
-    "offer已就位",
-    "offer",
-    "等您来发光",
-    "等你来发光",
-    "职等你来",
-    "虚位以待",
-    "加入",
-    "加入我们",
-    "加入我们吧",
-    "加入团队",
-    "欢迎加入",
-    "期待你的加入",
-    "期待您的加入",
-    "等你加入",
-    "等您加入",
-    "诚邀加入",
-    "诚邀加盟",
-    "诚邀英才",
-    "英才",
-    "纳贤",
-    "引才",
-    "招才",
-    "伯乐",
-    "火热招募",
-    "寻找发光的你",
-    "寻找发光的您",
 ]
 
 
@@ -179,11 +184,11 @@ class RecruitmentFilter:
         rules = self.get_rules()
         combined = "\n".join([title or "", digest or ""])
         include_hits = self._match_keywords(combined, rules["title_include"])
-        priority_hits = self._match_keywords(title, TITLE_PRIORITY_KEYWORDS)
+        title_exclude_hits = self._match_keywords(title, rules["title_exclude"])
         exclude_hits = self._match_keywords(combined, rules["exclude_any"])
 
-        if priority_hits:
-            return True, self._dedupe(include_hits + priority_hits), False
+        if title_exclude_hits:
+            return False, self._dedupe(include_hits), True
 
         return bool(include_hits) and not bool(exclude_hits), include_hits, bool(exclude_hits)
 
@@ -192,15 +197,21 @@ class RecruitmentFilter:
             article.get("title", ""),
             article.get("digest", ""),
         )
+        rules = self.get_rules()
+        title_exclude_hits = self._match_keywords(article.get("title", ""), rules["title_exclude"])
         title_hits = self._dedupe(
-            self._match_keywords(article.get("title", ""), self.get_rules()["title_include"]) +
-            self._match_keywords(article.get("title", ""), TITLE_PRIORITY_KEYWORDS)
+            self._match_keywords(article.get("title", ""), TITLE_AUTO_CONFIRM_KEYWORDS)
         )
 
         article["is_recruitment"] = 0
         article["matched_keywords"] = json.dumps(include_hits, ensure_ascii=False)
         article["filter_stage"] = ""
         article["review_status"] = ""
+
+        if title_exclude_hits:
+            article["filter_stage"] = "coarse_excluded"
+            article["review_status"] = "rejected"
+            return article, False
 
         if title_hits:
             article["is_recruitment"] = 1
@@ -226,15 +237,22 @@ class RecruitmentFilter:
         plain_content = article.get("plain_content", "") or ""
         title = article.get("title", "") or ""
         digest = article.get("digest", "") or ""
+        title_exclude_hits = self._match_keywords(title, rules["title_exclude"])
         title_priority_hits = self._dedupe(
-            self._match_keywords(title, rules["title_include"]) +
-            self._match_keywords(title, TITLE_PRIORITY_KEYWORDS)
+            self._match_keywords(title, TITLE_AUTO_CONFIRM_KEYWORDS)
         )
         full_text = "\n".join([title, digest, plain_content])
         exclude_hits = self._match_keywords(full_text, rules["exclude_any"])
         images = article.get("images")
         if images is None:
             images = self._safe_load_json_list(article.get("images_json"))
+
+        if title_exclude_hits:
+            article["is_recruitment"] = 0
+            article["review_status"] = "rejected"
+            article["filter_stage"] = "content_excluded"
+            article["matched_keywords"] = json.dumps(existing_hits, ensure_ascii=False)
+            return article
 
         if title_priority_hits:
             merged_hits = self._dedupe(existing_hits + title_priority_hits)
@@ -254,10 +272,11 @@ class RecruitmentFilter:
             return article
 
         content_hits = self._match_keywords(plain_content, rules["content_include"])
+        confirm_hits = self._match_keywords(plain_content, rules["content_confirm"])
         all_hits = self._dedupe(existing_hits + content_hits)
         article["matched_keywords"] = json.dumps(all_hits, ensure_ascii=False)
 
-        if content_hits:
+        if confirm_hits:
             article["is_recruitment"] = 1
             article["review_status"] = "confirmed"
             article["filter_stage"] = "content_confirmed"

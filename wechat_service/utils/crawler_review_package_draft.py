@@ -239,13 +239,24 @@ def _resolve_asset_path(review_dir: Path, raw_path: str) -> Path | None:
 def _rewrite_local_images(review_dir: Path, content_html: str) -> str:
     soup = BeautifulSoup(content_html or "", "html.parser")
     for img in soup.find_all("img"):
+        drop_image = False
         for attr in ("src", "data-src", "data-original", "data-croporisrc"):
             raw = (img.get(attr) or "").strip()
-            if not raw or raw.startswith(("http://", "https://", "file://", "data:")):
+            if not raw:
+                continue
+            if raw.startswith(("http://", "https://")):
+                drop_image = True
+                break
+            if raw.startswith(("file://", "data:")):
                 continue
             resolved = _resolve_asset_path(review_dir, raw)
             if resolved is not None:
                 img[attr] = str(resolved)
+                continue
+            drop_image = True
+            break
+        if drop_image:
+            img.decompose()
     return str(soup)
 
 
@@ -347,6 +358,8 @@ def _validate_attachment_backfill(package: Dict[str, Any]) -> None:
 
     missing_titles = []
     for attachment in attachments:
+        if attachment.get("category") not in {"position_table", "application_form"}:
+            continue
         if attachment.get("quick_paste_html") or attachment.get("insert_link"):
             continue
         missing_titles.append(str(attachment.get("title") or "未命名附件"))

@@ -4,7 +4,12 @@ services:
     container_name: wechat-download-api
     restart: unless-stopped
     working_dir: /app
-    command: ["python", "app.py"]
+    command:
+      - sh
+      - -lc
+      - |
+        python -c "import PIL" >/dev/null 2>&1 || pip install --no-cache-dir 'Pillow>=10.0.0'
+        exec python app.py
     ports:
       - "5001:5000"
     volumes:

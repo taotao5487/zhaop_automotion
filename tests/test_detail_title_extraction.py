@@ -76,3 +76,60 @@ def test_wechat_review_builder_uses_detail_pipeline_title_as_source_of_truth():
     )
 
     assert title == "详情页真实标题"
+
+
+HTML_WITH_GENERIC_SECTION_TITLE = """
+<html>
+  <head>
+    <title>宜宾市第四人民医院2026年第二次公开招募就业见习人员公告_宜宾市第四人民医院</title>
+  </head>
+  <body>
+    <section id="banner">
+      <div class="title"><span>人才招聘</span><em>Talent Recruitment</em></div>
+    </section>
+    <section class="newsInfo">
+      <article class="infoLeft">
+        <div class="neInfo">
+          <h4>宜宾市第四人民医院2026年第二次公开招募就业见习人员公告</h4>
+        </div>
+        <div class="dis_content">
+          <p>正文</p>
+        </div>
+      </article>
+    </section>
+  </body>
+</html>
+"""
+
+
+def test_detail_pipeline_prefers_crawler_title_over_generic_section_title():
+    title = DetailPipeline._extract_title(
+        HTML_WITH_GENERIC_SECTION_TITLE,
+        fallback_title="宜宾市第四人民医院2026年第二次公开招募就业见习人员公告2026-03-31",
+    )
+
+    assert title == "宜宾市第四人民医院2026年第二次公开招募就业见习人员公告"
+
+
+def test_default_detail_rules_cover_known_problem_hospital_sites():
+    pipeline = DetailPipeline(crawler=object())
+
+    expected_sites = {
+        "site_13_13",
+        "site_72_72",
+        "site_84_84",
+        "site_118_118",
+    }
+
+    for site_name in expected_sites:
+        rule = pipeline.get_rule(site_name)
+        assert rule.content_selectors, site_name
+
+
+def test_detail_pipeline_strips_trailing_publish_meta_from_crawler_title():
+    title = DetailPipeline._extract_title(
+        "<html><body><div class='newdet-bt'><span>栏目标题</span></div></body></html>",
+        fallback_title="重庆大学附属江津医院 2026年医院自聘岗位招聘简章发布时间：2026-03-31访问人数：7",
+    )
+
+    assert title == "重庆大学附属江津医院 2026年医院自聘岗位招聘简章"

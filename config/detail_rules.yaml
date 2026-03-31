@@ -5,6 +5,15 @@
 # 3. body 回退
 
 sites:
+  site_13_13:
+    content_selectors:
+      - ".newdet .newdet-det"
+    remove_selectors:
+      - ".in-wz"
+      - ".newdet-bt p"
+    attachment_selectors:
+      - ".newdet .newdet-det a[href]"
+
   site_144_144:
     content_selectors:
       - ".art .content"
@@ -16,3 +25,30 @@ sites:
       - "script[src*='gethits.asp']"
     attachment_selectors:
       - ".art .content a[href]"
+
+  site_72_72:
+    content_selectors:
+      - ".c13_r .nr1 .zw"
+    remove_selectors:
+      - ".bt h3"
+    attachment_selectors:
+      - ".c13_r .nr1 .zw a[href]"
+
+  site_84_84:
+    content_selectors:
+      - ".work_main_left .work_del_content"
+    remove_selectors:
+      - ".work_del_date"
+      - ".next_art"
+      - ".art_btn"
+    attachment_selectors:
+      - ".work_main_left .work_del_content a[href]"
+
+  site_118_118:
+    content_selectors:
+      - ".newsInfo .infoLeft .dis_content"
+    remove_selectors:
+      - ".dis_span"
+      - ".ziyeNav"
+    attachment_selectors:
+      - ".newsInfo .infoLeft .dis_content a[href]"

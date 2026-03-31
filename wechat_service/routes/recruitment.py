@@ -228,11 +228,24 @@ async def push_recruitment_to_shared_official_draft_series(
         description="指定要推送的招聘文章原文链接，留空则默认最新一篇未进入共享草稿串的 confirmed 文章",
     ),
     force: bool = Query(False, description="是否允许重复推送已按 URL 记录过的文章"),
+    push_all: bool = Query(
+        False,
+        alias="all",
+        description="是否批量推送当前所有未进入共享草稿串的 confirmed 招聘文章",
+    ),
+    limit: int = Query(
+        1000,
+        ge=1,
+        le=5000,
+        description="批量模式下本次最多推送多少篇文章",
+    ),
 ):
     try:
         result = await push_recruitment_article_to_shared_draft_series(
             source_url=source_url,
             force=force,
+            push_all=push_all,
+            limit=limit,
         )
     except OfficialWechatDraftError as exc:
         return JSONResponse(

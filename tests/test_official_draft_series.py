@@ -19,6 +19,7 @@ from wechat_service.utils import rss_store
 from wechat_service.utils.official_wechat_draft import (
     push_article_row_to_draft,
     push_article_row_to_shared_draft_series,
+    push_recruitment_article_to_shared_draft_series,
 )
 from scripts.push_wechat_review_to_official_draft import main as crawler_push_main
 
@@ -63,6 +64,102 @@ def test_init_db_creates_shared_series_schema(temp_rss_db):
     assert {"series_key", "current_media_id", "current_article_count", "batch_index"}.issubset(
         series_columns
     )
+
+
+def test_build_article_row_from_review_package_drops_unresolved_external_images(tmp_path):
+    from PIL import Image
+
+    from wechat_service.utils.crawler_review_package_draft import (
+        build_article_row_from_review_package,
+    )
+
+    review_dir = tmp_path / "wechat_review" / "item_external_images"
+    inline_dir = review_dir / "assets" / "inline"
+    inline_dir.mkdir(parents=True, exist_ok=True)
+
+    local_image = inline_dir / "cover.png"
+    Image.new("RGB", (320, 180), "white").save(local_image)
+
+    package = {
+        "title": "测试外链图片过滤",
+        "source_url": "https://example.com/review-package",
+        "hospital": "测试医院",
+        "plain_text": "这里是正文摘要",
+        "content_html": (
+            '<article><p>正文</p>'
+            '<img src="https://example.com/blocked-banner.png" />'
+            '<img src="assets/inline/cover.png" /></article>'
+        ),
+        "images": [
+            {
+                "src": "https://example.com/blocked-banner.png",
+                "category": "content_image",
+                "keep": True,
+            },
+            {
+                "src": "assets/inline/cover.png",
+                "category": "content_image",
+                "keep": True,
+            },
+        ],
+        "attachments": [],
+    }
+    (review_dir / "package.json").write_text(
+        json.dumps(package, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    row = build_article_row_from_review_package(review_dir)
+
+    assert str(local_image.resolve()) in row["content"]
+    assert "https://example.com/blocked-banner.png" not in row["content"]
+
+
+def test_build_article_row_from_review_package_allows_other_attachments_without_backfill(tmp_path):
+    from wechat_service.utils.crawler_review_package_draft import (
+        build_article_row_from_review_package,
+    )
+
+    review_dir = tmp_path / "wechat_review" / "item_other_attachment"
+    attachments_dir = review_dir / "assets" / "attachments"
+    attachments_dir.mkdir(parents=True, exist_ok=True)
+
+    local_attachment = attachments_dir / "attachment_notice.html"
+    local_attachment.write_text("<html><body>附件页</body></html>", encoding="utf-8")
+
+    package = {
+        "title": "测试普通附件链接",
+        "source_url": "https://example.com/review-package",
+        "hospital": "测试医院",
+        "plain_text": "这里是正文摘要",
+        "content_html": (
+            '<article><p>正文</p><section class="wechat-review-section"><h2>附件说明</h2>'
+            '<ul class="wechat-review-attachments"><li>'
+            '<a href="https://example.com/download.html">下载专区</a>'
+            "<span>（补充附件）</span></li></ul></section></article>"
+        ),
+        "images": [],
+        "attachments": [
+            {
+                "title": "下载专区",
+                "source_url": "https://example.com/download.html",
+                "local_path": "assets/attachments/attachment_notice.html",
+                "render_status": "link_only",
+                "rendered_images": [],
+                "category": "other",
+                "description": "补充附件",
+            }
+        ],
+    }
+    (review_dir / "package.json").write_text(
+        json.dumps(package, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    row = build_article_row_from_review_package(review_dir)
+
+    assert row["title"] == "测试普通附件链接"
+    assert 'href="https://example.com/download.html"' in row["content"]
 
 
 def test_series_lease_can_be_acquired_released_and_reclaimed(temp_rss_db):
@@ -575,6 +672,112 @@ async def test_shared_series_rebuild_refreshes_current_media_id(temp_rss_db, mon
     assert result["previous_draft_media_id"] == "draft-1"
     assert series["current_media_id"] == "draft-2"
     assert series["current_article_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_recruitment_shared_series_all_pushes_all_unpushed_rows(monkeypatch):
+    rows = [
+        _make_row(f"https://example.com/batch-{index}", title=f"文章{index}")
+        for index in range(1, 11)
+    ]
+    list_calls = []
+    pushed_urls = []
+
+    def fake_get_recruitment_articles(status="confirmed", limit=100, push_status="all"):
+        list_calls.append((status, limit, push_status))
+        return rows
+
+    async def fake_push_article_row_to_shared_draft_series(row, *, source_type, force, series_key):
+        pushed_urls.append(row["link"])
+        idx = len(pushed_urls)
+        if idx == 1:
+            return {
+                "success": True,
+                "status": "pushed",
+                "append_mode": "draft/add",
+                "draft_media_id": "draft-1",
+                "article_count_before": 0,
+                "article_count_after": 1,
+                "batch_index": 1,
+                "source_url": row["link"],
+                "title": row["title"],
+            }
+        if idx <= 8:
+            return {
+                "success": True,
+                "status": "appended",
+                "append_mode": "draft/update",
+                "draft_media_id": "draft-1",
+                "article_count_before": idx - 1,
+                "article_count_after": idx,
+                "batch_index": 1,
+                "source_url": row["link"],
+                "title": row["title"],
+            }
+        if idx == 9:
+            return {
+                "success": True,
+                "status": "rotated_new_batch",
+                "append_mode": "rotated_new_batch",
+                "draft_media_id": "draft-2",
+                "previous_draft_media_id": "draft-1",
+                "article_count_before": 8,
+                "article_count_after": 1,
+                "batch_index": 2,
+                "source_url": row["link"],
+                "title": row["title"],
+            }
+        return {
+            "success": True,
+            "status": "appended",
+            "append_mode": "draft/update",
+            "draft_media_id": "draft-2",
+            "article_count_before": 1,
+            "article_count_after": 2,
+            "batch_index": 2,
+            "source_url": row["link"],
+            "title": row["title"],
+        }
+
+    monkeypatch.setattr(
+        "utils.official_wechat_draft.rss_store.get_recruitment_articles",
+        fake_get_recruitment_articles,
+    )
+    monkeypatch.setattr(
+        "utils.official_wechat_draft.push_article_row_to_shared_draft_series",
+        fake_push_article_row_to_shared_draft_series,
+    )
+
+    result = await push_recruitment_article_to_shared_draft_series(
+        force=False,
+        push_all=True,
+        limit=25,
+    )
+
+    assert list_calls == [("confirmed", 25, "unpushed")]
+    assert pushed_urls == [row["link"] for row in rows]
+    assert result["mode"] == "batch"
+    assert result["total_candidates"] == 10
+    assert result["processed_count"] == 10
+    assert result["created_draft_count"] == 2
+    assert result["draft_media_ids"] == ["draft-1", "draft-2"]
+    assert result["status_counts"] == {
+        "pushed": 1,
+        "appended": 8,
+        "rotated_new_batch": 1,
+    }
+    assert len(result["results"]) == 10
+
+
+@pytest.mark.asyncio
+async def test_recruitment_shared_series_all_rejects_source_url(monkeypatch):
+    import utils.official_wechat_draft as official_draft_module
+
+    with pytest.raises(official_draft_module.OfficialWechatDraftError, match="source_url"):
+        await push_recruitment_article_to_shared_draft_series(
+            source_url="https://example.com/one",
+            push_all=True,
+        )
 
 
 def test_crawler_summary_path_pushes_ready_items_and_continues_on_error(tmp_path, monkeypatch, capsys):

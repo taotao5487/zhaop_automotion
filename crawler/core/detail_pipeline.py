@@ -574,6 +574,7 @@ class DetailPipeline:
     @staticmethod
     def _extract_title(raw_html: str, fallback_title: str) -> str:
         soup = BeautifulSoup(raw_html, "lxml")
+        cleaned_fallback_title = _clean_title_text(fallback_title)
         for selector in (
             ".content-title",
             ".announcement_show_tit",
@@ -584,10 +585,18 @@ class DetailPipeline:
         ):
             node = soup.select_one(selector)
             if node and node.get_text(strip=True):
-                return _clean_title_text(node.get_text(strip=True))
+                candidate_title = _clean_title_text(node.get_text(strip=True))
+                return _select_better_detail_title(
+                    extracted_title=candidate_title,
+                    fallback_title=cleaned_fallback_title,
+                )
         if soup.title and soup.title.get_text(strip=True):
-            return _clean_title_text(soup.title.get_text(strip=True))
-        return _clean_title_text(fallback_title)
+            candidate_title = _clean_title_text(soup.title.get_text(strip=True))
+            return _select_better_detail_title(
+                extracted_title=candidate_title,
+                fallback_title=cleaned_fallback_title,
+            )
+        return cleaned_fallback_title
 
     def _prune_html(self, soup: BeautifulSoup, rule: DetailRule) -> None:
         for selector in DEFAULT_REMOVE_SELECTORS + rule.remove_selectors:
@@ -1259,6 +1268,10 @@ def _clean_title_text(value: str) -> str:
     title = re.sub(r"\s+", " ", (value or "").strip())
     if not title:
         return ""
+    title = re.sub(r"^[>＞]+\s*", "", title).strip()
+    title = re.sub(r"返回列表\s*[>＞≫]*", "", title).strip()
+    title = re.split(r"(?:发布时间|发布日期|发布人|访问人数|浏览次数)[:：]", title, maxsplit=1)[0].strip()
+    title = re.sub(r"\s*\d{4}[./-]\d{1,2}[./-]\d{1,2}$", "", title).strip()
     suffix_keywords = ("官方网站", "医院公告", "招贤纳士", "新闻中心", "人事招聘", "招聘公告", "通知公告")
     if "-" in title:
         parts = [part.strip() for part in title.split("-") if part.strip()]
@@ -1276,6 +1289,50 @@ def _clean_title_text(value: str) -> str:
                 title = parts[0]
                 break
     return title.strip()
+
+
+def _title_has_recruitment_signal(title: str) -> bool:
+    return any(keyword in (title or "") for keyword in ("招聘", "招募", "公告", "简章", "公示", "启示", "报名"))
+
+
+def _looks_generic_detail_title(title: str) -> bool:
+    normalized = (title or "").strip()
+    if not normalized:
+        return True
+    compact = re.sub(r"\s+", "", normalized)
+    generic_literals = {
+        "人才招聘",
+        "人才招聘talentrecruitment",
+        "talentrecruitment",
+        "招聘信息",
+        "人事招聘",
+        "通知公告",
+        "公告信息",
+        "招标招聘",
+    }
+    if compact.lower() in generic_literals:
+        return True
+    if compact.endswith("医院") and not _title_has_recruitment_signal(compact):
+        return True
+    if len(compact) <= 12 and not _title_has_recruitment_signal(compact):
+        return True
+    return False
+
+
+def _select_better_detail_title(extracted_title: str, fallback_title: str) -> str:
+    extracted = _clean_title_text(extracted_title)
+    fallback = _clean_title_text(fallback_title)
+    if not fallback:
+        return extracted
+    if not extracted:
+        return fallback
+    if _looks_generic_detail_title(extracted):
+        return fallback
+    if _title_has_recruitment_signal(fallback) and not _title_has_recruitment_signal(extracted):
+        return fallback
+    if len(fallback) >= len(extracted) + 6 and _title_has_recruitment_signal(fallback):
+        return fallback
+    return extracted
 
 
 def _build_resource_name(

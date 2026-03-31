@@ -18,6 +18,9 @@ def test_compose_uses_local_env_and_data_mounts():
     service = compose["services"]["wechat-api"]
 
     assert service["image"] == "tmwgsicp/wechat-download-api:latest"
+    assert service["command"][:2] == ["sh", "-lc"]
+    assert "import PIL" in service["command"][2]
+    assert "pip install --no-cache-dir 'Pillow>=10.0.0'" in service["command"][2]
     assert ".:/app" in service["volumes"]
     assert "5001:5000" in service["ports"]
     assert "./data:/app/data" in service["volumes"]
