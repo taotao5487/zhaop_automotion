@@ -1,0 +1,103 @@
+<div class="section">
+  <div class="label">Local Review Console</div>
+  <h2>招聘审核 / 待发布队列</h2>
+  <p class="subtitle">默认只显示系统判定需要人工介入的公告。高置信度公告不占用人工队列，直接进入待发布池。</p>
+</div>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">队列视图</div>
+    <div class="mockup-body" style="padding:20px;background:#f4efe6;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+        <span style="padding:6px 10px;border-radius:999px;background:#1f5c4a;color:#fff;font-size:12px;">待人工确认 14</span>
+        <span style="padding:6px 10px;border-radius:999px;background:#efe4c8;color:#6b4f1d;font-size:12px;">抽取异常 5</span>
+        <span style="padding:6px 10px;border-radius:999px;background:#d9e4f5;color:#1d4675;font-size:12px;">稍后处理 8</span>
+      </div>
+
+      <div style="display:grid;gap:10px;">
+        <div style="border:2px solid #1f5c4a;border-radius:14px;padding:14px;background:#fff7ea;">
+          <div style="display:flex;justify-content:space-between;gap:12px;">
+            <strong>重庆某医院 2026 年公开招聘公告</strong>
+            <span style="font-size:12px;color:#1f5c4a;">低置信度标题</span>
+          </div>
+          <div style="font-size:12px;color:#6b7280;margin-top:8px;">重庆市人民医院 · 2026-03-31 · 标题命中 1 个，正文命中不足</div>
+          <div style="font-size:12px;color:#8b5e34;margin-top:8px;">原因：标题像招聘，但正文抓取过短，仅 46 字</div>
+        </div>
+
+        <div style="border:1px solid #d9d2c3;border-radius:14px;padding:14px;background:#fff;">
+          <div style="display:flex;justify-content:space-between;gap:12px;">
+            <strong>关于开展护理技能比赛的通知</strong>
+            <span style="font-size:12px;color:#a16207;">疑似误命中</span>
+          </div>
+          <div style="font-size:12px;color:#6b7280;margin-top:8px;">某附属医院 · 2026-03-30 · 标题含“报名”但正文偏活动通知</div>
+        </div>
+
+        <div style="border:1px solid #d9d2c3;border-radius:14px;padding:14px;background:#fff;">
+          <div style="display:flex;justify-content:space-between;gap:12px;">
+            <strong>重庆某医院招聘公告（正文已生成）</strong>
+            <span style="font-size:12px;color:#1d4675;">稍后处理</span>
+          </div>
+          <div style="font-size:12px;color:#6b7280;margin-top:8px;">正文清洗后保留了“上一篇/下一篇”噪音，等待复核</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">详情面板</div>
+    <div class="mockup-body" style="padding:20px;background:#fcfbf7;">
+      <div style="display:grid;gap:14px;">
+        <div style="padding:14px;border-radius:14px;background:#fff;border:1px solid #e6dfd0;">
+          <div style="font-size:12px;color:#6b7280;">原始信息</div>
+          <div style="margin-top:8px;font-size:14px;">标题、医院、来源网址、发布时间、规则命中情况、抽取方式</div>
+        </div>
+
+        <div style="padding:14px;border-radius:14px;background:#fff;border:1px solid #e6dfd0;">
+          <div style="font-size:12px;color:#6b7280;">系统判定</div>
+          <div style="margin-top:8px;font-size:14px;">招聘置信度 0.61 / 抽取质量 0.42</div>
+          <div style="margin-top:8px;font-size:12px;color:#8b5e34;">触发原因：正文过短、附件命中但正文段落不足、残留分页噪音</div>
+        </div>
+
+        <div style="padding:14px;border-radius:14px;background:#fff;border:1px solid #e6dfd0;">
+          <div style="font-size:12px;color:#6b7280;">内容预览</div>
+          <div style="margin-top:8px;font-size:14px;line-height:1.7;">
+            一、招聘岗位...<br />
+            二、报名方式...<br />
+            下一篇：医院新闻...
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="mock-button" style="background:#1f5c4a;">确认招聘</button>
+          <button class="mock-button" style="background:#9b2c2c;">不是招聘</button>
+          <button class="mock-button" style="background:#465468;">稍后处理</button>
+          <button class="mock-button" style="background:#b7791f;">打开原文</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="left-right" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>左右双栏</h3>
+      <p>左边扫队列，右边看详情。适合高频人工确认。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="top-bottom" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>上下结构</h3>
+      <p>上面是筛选和列表，下面是详情。移动端更自然，但切换效率略差。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="cards-only" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>卡片流</h3>
+      <p>每条记录一张大卡片，直接在卡片上处理。实现简单，但信息密度最低。</p>
+    </div>
+  </div>
+</div>

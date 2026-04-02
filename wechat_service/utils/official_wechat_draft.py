@@ -18,6 +18,7 @@ import json
 import logging
 import mimetypes
 import os
+import re
 import tempfile
 import time
 from pathlib import Path
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 WECHAT_API_BASE = "https://api.weixin.qq.com"
 DEFAULT_OFFICIAL_AUTHOR = "白衣驿站"
 DEFAULT_SHARED_DRAFT_LEASE_TTL_SECONDS = 120
+WECHAT_TITLE_CHAR_LIMIT = 64
 _OFFICIAL_DOTENV_PATH = ENV_FILE
 _OFFICIAL_ENV_LOADED = False
 
@@ -343,7 +345,10 @@ async def _rewrite_content_images(access_token: str, content_html: str) -> tuple
 
 
 def _sanitize_title(title: str) -> str:
-    return (title or "").strip()
+    normalized = re.sub(r"\s+", " ", (title or "").strip())
+    if len(normalized) <= WECHAT_TITLE_CHAR_LIMIT:
+        return normalized
+    return normalized[:WECHAT_TITLE_CHAR_LIMIT].rstrip()
 
 
 def _sanitize_author(author: str) -> str:
@@ -636,9 +641,32 @@ def _normalize_existing_draft_article(article: Dict) -> Dict:
         "content": article.get("content") or "",
         "content_source_url": article.get("content_source_url") or "",
         "thumb_media_id": (article.get("thumb_media_id") or "").strip(),
+        "thumb_url": (article.get("thumb_url") or "").strip(),
         "need_open_comment": int(article.get("need_open_comment") or 0),
         "only_fans_can_comment": int(article.get("only_fans_can_comment") or 0),
     }
+
+
+async def _prepare_existing_draft_articles_for_rebuild(
+    access_token: str,
+    draft_data: Dict,
+) -> List[Dict]:
+    news_item = (draft_data.get("news_item") or []) if isinstance(draft_data, dict) else []
+    prepared_articles: List[Dict] = []
+
+    for raw_article in news_item:
+        if not isinstance(raw_article, dict):
+            continue
+
+        normalized = _normalize_existing_draft_article(raw_article)
+        if not normalized.get("thumb_media_id"):
+            thumb_url = _resolve_original_image_url(normalized.get("thumb_url", ""))
+            if not thumb_url:
+                raise OfficialWechatDraftError("历史草稿文章缺少 thumb_media_id / thumb_url，无法重建草稿")
+            normalized["thumb_media_id"] = await _upload_cover_material(access_token, thumb_url)
+        prepared_articles.append(normalized)
+
+    return prepared_articles
 
 
 async def _add_draft(access_token: str, articles: List[Dict]) -> str:
@@ -955,12 +983,7 @@ async def append_recruitment_article_to_draft(
     )
     access_token = await _get_stable_access_token()
     draft_data = await _get_draft(access_token, target_media_id)
-    news_item = (draft_data.get("news_item") or []) if isinstance(draft_data, dict) else []
-    existing_articles = [
-        _normalize_existing_draft_article(article)
-        for article in news_item
-        if isinstance(article, dict)
-    ]
+    existing_articles = await _prepare_existing_draft_articles_for_rebuild(access_token, draft_data)
     current_count = len(existing_articles)
     if current_count >= 8:
         raise OfficialWechatDraftError("目标草稿已包含 8 篇文章，无法继续追加")
@@ -970,55 +993,21 @@ async def append_recruitment_article_to_draft(
         row,
     )
 
-    appended_via = "draft/update"
-    resulting_media_id = target_media_id
-    replaced_media_id = ""
-    try:
-        await _update_draft_article(
-            access_token=access_token,
-            media_id=target_media_id,
-            index=current_count,
-            article=article_payload,
-        )
-    except OfficialWechatDraftError as exc:
-        appended_via = "draft/add_rebuild"
-        existing_msg = str(exc)
-        combined_articles = existing_articles + [article_payload]
-        resulting_media_id = await _add_draft(access_token, combined_articles)
-        replaced_media_id = target_media_id
-        if delete_old_on_rebuild:
-            try:
-                await _delete_draft(access_token, target_media_id)
-            except OfficialWechatDraftError as delete_exc:
-                logger.warning("delete old draft failed after rebuild: %s", delete_exc)
-        _save_push_record(
-            row=row,
-            draft_status="appended",
-            draft_media_id=resulting_media_id,
-            previous_draft_media_id=replaced_media_id,
-            append_mode=appended_via,
-        )
-        return {
-            "success": True,
-            "source_url": row.get("link", ""),
-            "title": row.get("title", ""),
-            "account_name": row.get("nickname") or row.get("fakeid"),
-            "thumb_media_id": thumb_media_id,
-            "draft_media_id": resulting_media_id,
-            "previous_draft_media_id": replaced_media_id,
-            "article_count_before": current_count,
-            "article_count_after": current_count + 1,
-            "append_mode": appended_via,
-            "fallback_reason": existing_msg,
-            "image_replacements": image_replacements,
-            "image_replacement_count": len(image_replacements),
-        }
+    appended_via = "draft/add_rebuild"
+    combined_articles = existing_articles + [article_payload]
+    resulting_media_id = await _add_draft(access_token, combined_articles)
+    replaced_media_id = target_media_id
+    if delete_old_on_rebuild:
+        try:
+            await _delete_draft(access_token, target_media_id)
+        except OfficialWechatDraftError as delete_exc:
+            logger.warning("delete old draft failed after rebuild: %s", delete_exc)
 
     _save_push_record(
         row=row,
         draft_status="appended",
         draft_media_id=resulting_media_id,
-        previous_draft_media_id="",
+        previous_draft_media_id=replaced_media_id,
         append_mode=appended_via,
     )
     return {
@@ -1028,6 +1017,7 @@ async def append_recruitment_article_to_draft(
         "account_name": row.get("nickname") or row.get("fakeid"),
         "thumb_media_id": thumb_media_id,
         "draft_media_id": resulting_media_id,
+        "previous_draft_media_id": replaced_media_id,
         "article_count_before": current_count,
         "article_count_after": current_count + 1,
         "append_mode": appended_via,
@@ -1050,12 +1040,7 @@ async def append_article_row_to_draft(
     normalized_row = await _ensure_article_content_ready(_normalize_direct_article_row(row))
     access_token = await _get_stable_access_token()
     draft_data = await _get_draft(access_token, target_media_id)
-    news_item = (draft_data.get("news_item") or []) if isinstance(draft_data, dict) else []
-    existing_articles = [
-        _normalize_existing_draft_article(article)
-        for article in news_item
-        if isinstance(article, dict)
-    ]
+    existing_articles = await _prepare_existing_draft_articles_for_rebuild(access_token, draft_data)
     current_count = len(existing_articles)
     if current_count >= 8:
         raise OfficialWechatDraftError("目标草稿已包含 8 篇文章，无法继续追加")
@@ -1065,57 +1050,22 @@ async def append_article_row_to_draft(
         normalized_row,
     )
 
-    appended_via = "draft/update"
-    resulting_media_id = target_media_id
-    replaced_media_id = ""
-    try:
-        await _update_draft_article(
-            access_token=access_token,
-            media_id=target_media_id,
-            index=current_count,
-            article=article_payload,
-        )
-    except OfficialWechatDraftError as exc:
-        appended_via = "draft/add_rebuild"
-        existing_msg = str(exc)
-        combined_articles = existing_articles + [article_payload]
-        resulting_media_id = await _add_draft(access_token, combined_articles)
-        replaced_media_id = target_media_id
-        if delete_old_on_rebuild:
-            try:
-                await _delete_draft(access_token, target_media_id)
-            except OfficialWechatDraftError as delete_exc:
-                logger.warning("delete old draft failed after rebuild: %s", delete_exc)
-        if save_record and normalized_row.get("link"):
-            _save_push_record(
-                row=normalized_row,
-                draft_status="appended",
-                draft_media_id=resulting_media_id,
-                previous_draft_media_id=replaced_media_id,
-                append_mode=appended_via,
-            )
-        return {
-            "success": True,
-            "source_url": normalized_row.get("link", ""),
-            "title": normalized_row.get("title", ""),
-            "account_name": normalized_row.get("account_name") or normalized_row.get("hospital") or "",
-            "thumb_media_id": thumb_media_id,
-            "draft_media_id": resulting_media_id,
-            "previous_draft_media_id": replaced_media_id,
-            "article_count_before": current_count,
-            "article_count_after": current_count + 1,
-            "append_mode": appended_via,
-            "fallback_reason": existing_msg,
-            "image_replacements": image_replacements,
-            "image_replacement_count": len(image_replacements),
-        }
+    appended_via = "draft/add_rebuild"
+    combined_articles = existing_articles + [article_payload]
+    resulting_media_id = await _add_draft(access_token, combined_articles)
+    replaced_media_id = target_media_id
+    if delete_old_on_rebuild:
+        try:
+            await _delete_draft(access_token, target_media_id)
+        except OfficialWechatDraftError as delete_exc:
+            logger.warning("delete old draft failed after rebuild: %s", delete_exc)
 
     if save_record and normalized_row.get("link"):
         _save_push_record(
             row=normalized_row,
             draft_status="appended",
             draft_media_id=resulting_media_id,
-            previous_draft_media_id="",
+            previous_draft_media_id=replaced_media_id,
             append_mode=appended_via,
         )
     return {
@@ -1125,6 +1075,7 @@ async def append_article_row_to_draft(
         "account_name": normalized_row.get("account_name") or normalized_row.get("hospital") or "",
         "thumb_media_id": thumb_media_id,
         "draft_media_id": resulting_media_id,
+        "previous_draft_media_id": replaced_media_id,
         "article_count_before": current_count,
         "article_count_after": current_count + 1,
         "append_mode": appended_via,

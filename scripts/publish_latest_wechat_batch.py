@@ -99,6 +99,20 @@ def find_latest_summary_path(root: Path | str = DEFAULT_DETAIL_OUTPUT_ROOT) -> P
     return candidates[-1]
 
 
+def resolve_summary_path(summary_path: str = "", root: Path | str = DEFAULT_DETAIL_OUTPUT_ROOT) -> Path:
+    latest_summary_path = find_latest_summary_path(root)
+    if not summary_path:
+        return latest_summary_path
+
+    explicit_summary_path = Path(summary_path).expanduser().resolve()
+    if explicit_summary_path != latest_summary_path:
+        print(
+            "warning | summary_path_is_not_latest | "
+            f"provided={explicit_summary_path} | latest={latest_summary_path}"
+        )
+    return explicit_summary_path
+
+
 def load_review_dirs_from_summary(summary_path: Path | str) -> list[Path]:
     path = Path(summary_path).expanduser().resolve()
     if not path.exists():
@@ -275,11 +289,7 @@ async def push_review_dir(review_dir: Path, force: bool = False) -> dict:
 
 
 async def _run(args: argparse.Namespace) -> int:
-    summary_path = (
-        Path(args.summary_path).expanduser().resolve()
-        if args.summary_path
-        else find_latest_summary_path()
-    )
+    summary_path = resolve_summary_path(args.summary_path)
     review_dirs = load_review_dirs_from_summary(summary_path)
     print(f"using summary: {summary_path}")
 

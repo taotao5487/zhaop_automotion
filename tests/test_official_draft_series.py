@@ -254,6 +254,20 @@ def test_official_account_card_reads_values_from_dotenv(tmp_path, monkeypatch):
     assert "通过 dotenv 载入二维码名片" not in html
 
 
+def test_sanitize_title_trims_overlong_wechat_titles():
+    import utils.official_wechat_draft as official_draft_module
+
+    raw = (
+        "广元市第一人民医院 2026年度非在编工作人员自主招聘公告（第三批）- "
+        "广元市第一人民医院【www.gys072.cn】欢迎您！广元市第一人民医院"
+    )
+
+    sanitized = official_draft_module._sanitize_title(raw)
+
+    assert sanitized.startswith("广元市第一人民医院 2026年度非在编工作人员自主招聘公告")
+    assert len(sanitized) <= 64
+
+
 @pytest.mark.asyncio
 async def test_build_payload_rewrites_relative_qr_image_from_project_root(tmp_path, monkeypatch):
     import utils.official_wechat_draft as official_draft_module
@@ -469,7 +483,7 @@ async def test_shared_series_first_push_creates_batch_and_second_push_appends(
     monkeypatch,
 ):
     article_counts: dict[str, int] = {}
-    media_ids = iter(["draft-1"])
+    media_ids = iter(["draft-1", "draft-2"])
 
     async def fake_get_token():
         return "token"
@@ -480,16 +494,32 @@ async def test_shared_series_first_push_creates_batch_and_second_push_appends(
     async def fake_add_draft(access_token, articles):
         media_id = next(media_ids)
         article_counts[media_id] = len(articles)
+        if len(articles) == 2:
+            assert articles[0]["thumb_media_id"] == "thumb-existing-1"
         return media_id
 
     async def fake_get_draft(access_token, media_id):
         count = article_counts[media_id]
-        return {"news_item": [{"title": f"item-{index}"} for index in range(count)]}
+        return {
+            "news_item": [
+                {
+                    "title": f"item-{index}",
+                    "content": "<p>existing</p>",
+                    "content_source_url": f"https://example.com/existing-{index}",
+                    "thumb_media_id": "",
+                    "thumb_url": f"https://example.com/existing-{index}.jpg",
+                }
+                for index in range(count)
+            ]
+        }
 
     async def fake_update_draft_article(access_token, media_id, index, article):
-        assert index == article_counts[media_id]
-        article_counts[media_id] += 1
-        return {"errcode": 0}
+        raise official_draft_module.OfficialWechatDraftError("invalid index value")
+
+    async def fake_upload_cover_material(access_token, cover_url):
+        return "thumb-existing-1"
+
+    import utils.official_wechat_draft as official_draft_module
 
     monkeypatch.setattr("utils.official_wechat_draft._get_stable_access_token", fake_get_token)
     monkeypatch.setattr(
@@ -501,6 +531,10 @@ async def test_shared_series_first_push_creates_batch_and_second_push_appends(
     monkeypatch.setattr(
         "utils.official_wechat_draft._update_draft_article",
         fake_update_draft_article,
+    )
+    monkeypatch.setattr(
+        "utils.official_wechat_draft._upload_cover_material",
+        fake_upload_cover_material,
     )
 
     first = await push_article_row_to_shared_draft_series(
@@ -518,10 +552,10 @@ async def test_shared_series_first_push_creates_batch_and_second_push_appends(
 
     assert first["append_mode"] == "draft/add"
     assert first["batch_index"] == 1
-    assert second["append_mode"] == "draft/update"
-    assert second["draft_media_id"] == "draft-1"
+    assert second["append_mode"] == "draft/add_rebuild"
+    assert second["draft_media_id"] == "draft-2"
     assert second["article_count_after"] == 2
-    assert series["current_media_id"] == "draft-1"
+    assert series["current_media_id"] == "draft-2"
     assert series["current_article_count"] == 2
     assert series["batch_index"] == 1
     assert first_record["source_type"] == "recruitment"
@@ -634,7 +668,17 @@ async def test_shared_series_rebuild_refreshes_current_media_id(temp_rss_db, mon
         return ({"title": row["title"], "content": row["content"]}, "thumb-1", [])
 
     async def fake_get_draft(access_token, media_id):
-        return {"news_item": [{"title": "existing"}]}
+        return {
+            "news_item": [
+                {
+                    "title": "existing",
+                    "content": "<p>existing</p>",
+                    "content_source_url": "https://example.com/existing",
+                    "thumb_media_id": "",
+                    "thumb_url": "https://example.com/existing.jpg",
+                }
+            ]
+        }
 
     async def fake_update_draft_article(access_token, media_id, index, article):
         raise official_draft_module.OfficialWechatDraftError("draft/update failed")
@@ -645,6 +689,9 @@ async def test_shared_series_rebuild_refreshes_current_media_id(temp_rss_db, mon
 
     async def fake_delete_draft(access_token, media_id):
         return None
+
+    async def fake_upload_cover_material(access_token, cover_url):
+        return "thumb-existing-1"
 
     import utils.official_wechat_draft as official_draft_module
 
@@ -660,6 +707,10 @@ async def test_shared_series_rebuild_refreshes_current_media_id(temp_rss_db, mon
     )
     monkeypatch.setattr("utils.official_wechat_draft._add_draft", fake_add_draft)
     monkeypatch.setattr("utils.official_wechat_draft._delete_draft", fake_delete_draft)
+    monkeypatch.setattr(
+        "utils.official_wechat_draft._upload_cover_material",
+        fake_upload_cover_material,
+    )
 
     result = await push_article_row_to_shared_draft_series(
         _make_row("https://example.com/rebuild"),
@@ -856,6 +907,42 @@ def test_crawler_explicit_draft_media_id_uses_legacy_append(tmp_path, monkeypatc
     }
 
 
+def test_crawler_summary_path_warns_when_explicit_path_is_not_latest(tmp_path, monkeypatch, capsys):
+    older = tmp_path / "details" / "20260327_120000"
+    newer = tmp_path / "details" / "20260328_120000"
+    review_dir = tmp_path / "wechat_review" / "review"
+    review_dir.mkdir(parents=True)
+    older.mkdir(parents=True)
+    newer.mkdir(parents=True)
+    older_summary = older / "summary.json"
+    newer_summary = newer / "summary.json"
+    older_summary.write_text(
+        json.dumps({"results": [{"review_dir": str(review_dir)}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    newer_summary.write_text(json.dumps({"results": []}, ensure_ascii=False), encoding="utf-8")
+
+    async def fake_push_review_package_to_shared_draft_series(review_dir, force=False):
+        return {"status": "pushed", "draft_media_id": "draft-1", "batch_index": 1}
+
+    monkeypatch.setattr(
+        "push_wechat_review_to_official_draft.push_review_package_to_shared_draft_series",
+        fake_push_review_package_to_shared_draft_series,
+    )
+    monkeypatch.setattr(
+        "push_wechat_review_to_official_draft.find_latest_summary_path",
+        lambda root=None: newer_summary,
+    )
+
+    exit_code = crawler_push_main(["--summary-path", str(older_summary)])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "warning | summary_path_is_not_latest" in output
+    assert str(older_summary) in output
+    assert str(newer_summary) in output
+
+
 def test_publish_latest_batch_auto_picks_latest_summary(tmp_path):
     older = tmp_path / "details" / "20260327_120000"
     newer = tmp_path / "details" / "20260328_120000"
@@ -931,6 +1018,51 @@ def test_publish_latest_batch_processes_attachments_before_push(tmp_path, monkey
     assert upload_calls == ["review_a"]
     assert push_calls == [("review_a", False), ("review_b", False)]
     assert "using summary" in output
+
+
+def test_publish_latest_batch_warns_when_explicit_summary_is_not_latest(tmp_path, monkeypatch, capsys):
+    older = tmp_path / "details" / "20260327_120000"
+    newer = tmp_path / "details" / "20260328_120000"
+    review_dir = tmp_path / "wechat_review" / "batch_1" / "review_a"
+    review_dir.mkdir(parents=True)
+    older.mkdir(parents=True)
+    newer.mkdir(parents=True)
+    older_summary = older / "summary.json"
+    newer_summary = newer / "summary.json"
+    older_summary.write_text(
+        json.dumps({"results": [{"review_dir": str(review_dir)}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    newer_summary.write_text(json.dumps({"results": []}, ensure_ascii=False), encoding="utf-8")
+
+    import publish_latest_wechat_batch as publish_module
+
+    async def fake_push_review_package_to_shared_draft_series(review_dir, force=False):
+        return {"status": "pushed", "draft_media_id": "draft-1", "batch_index": 1}
+
+    monkeypatch.setattr(
+        publish_module,
+        "push_review_package_to_shared_draft_series",
+        fake_push_review_package_to_shared_draft_series,
+    )
+    monkeypatch.setattr(
+        publish_module,
+        "build_local_attachments_from_review_dir",
+        lambda review_dir: [],
+    )
+    monkeypatch.setattr(
+        publish_module,
+        "find_latest_summary_path",
+        lambda root=None: newer_summary,
+    )
+
+    exit_code = publish_module.main(["--summary-path", str(older_summary)])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "warning | summary_path_is_not_latest" in output
+    assert str(older_summary) in output
+    assert str(newer_summary) in output
 
 
 def test_publish_latest_batch_falls_back_when_push_runtime_dependency_missing(tmp_path, monkeypatch):

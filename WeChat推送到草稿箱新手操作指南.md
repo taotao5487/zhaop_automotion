@@ -886,6 +886,15 @@ source .venv/bin/activate
 python push_wechat_review_to_official_draft.py --summary-path "/绝对路径/到/summary.json"
 ```
 
+如果你只是想推“刚审核完的最新一批”，更推荐不要手写时间戳，直接用这个一键命令：
+
+```bash
+cd /Users/xiongtao/Documents/zhaop_automotion
+./.venv/bin/python scripts/publish_latest_wechat_batch.py --service idocx
+```
+
+这条命令会自动取 `data/exports/details/` 下最新一轮 `summary.json`，避免把昨天或更早那一批重复拿来推。
+
 ### 7.4 向已有草稿追加某个 review_dir
 
 如果你已经知道某个草稿的 `draft_media_id`，可以让脚本直接追加：
@@ -901,6 +910,8 @@ python push_wechat_review_to_official_draft.py --review-dir "/绝对路径/到/r
 - `--summary-path` 模式不能和 `--draft-media-id` 一起用
 - `review_dir` 必须是真实存在的绝对路径
 - `review_dir` 里面通常至少要有 `package.json`
+- 如果输出里出现 `warning | summary_path_is_not_latest`，说明你传入的不是最新一轮 `summary.json`
+- 如果输出里出现 `skipped_duplicate`，说明这批文章之前已经推送过，当前不会再次写入公众号草稿箱
 
 ## 8. 一条命令检查草稿箱推送前置条件
 

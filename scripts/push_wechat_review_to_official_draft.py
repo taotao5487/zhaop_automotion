@@ -25,6 +25,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+DEFAULT_DETAIL_OUTPUT_ROOT = PROJECT_ROOT / "data" / "exports" / "details"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -73,6 +74,34 @@ def _load_review_dirs_from_summary(summary_path: Path) -> list[Path]:
     return review_dirs
 
 
+def find_latest_summary_path(root: Path | str = DEFAULT_DETAIL_OUTPUT_ROOT) -> Path:
+    details_root = Path(root).expanduser().resolve()
+    if not details_root.exists():
+        raise OfficialWechatDraftError(f"详情输出目录不存在: {details_root}")
+
+    candidates = [
+        path / "summary.json"
+        for path in details_root.iterdir()
+        if path.is_dir() and (path / "summary.json").exists()
+    ]
+    if not candidates:
+        raise OfficialWechatDraftError(f"未找到任何 summary.json: {details_root}")
+
+    candidates.sort(key=lambda item: item.parent.name)
+    return candidates[-1]
+
+
+def resolve_summary_path(summary_path: str, root: Path | str = DEFAULT_DETAIL_OUTPUT_ROOT) -> Path:
+    explicit_summary_path = Path(summary_path).expanduser().resolve()
+    latest_summary_path = find_latest_summary_path(root)
+    if explicit_summary_path != latest_summary_path:
+        print(
+            "warning | summary_path_is_not_latest | "
+            f"provided={explicit_summary_path} | latest={latest_summary_path}"
+        )
+    return explicit_summary_path
+
+
 def _print_result(status: str, review_dir: Path, result: dict | None = None, error: str = "") -> None:
     parts = [status, str(review_dir)]
     if result:
@@ -111,7 +140,7 @@ async def _run(args: argparse.Namespace) -> int:
 
     if args.summary_path:
         review_dirs = _load_review_dirs_from_summary(
-            Path(args.summary_path).expanduser().resolve()
+            resolve_summary_path(args.summary_path)
         )
     else:
         review_dirs = [_resolve_review_dir(args.review_dir)]

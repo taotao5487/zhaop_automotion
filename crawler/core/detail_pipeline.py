@@ -5,7 +5,11 @@ import json
 import logging
 import mimetypes
 import re
+import shutil
+import subprocess
+import tempfile
 import zipfile
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -117,7 +121,7 @@ ATTACHMENT_EXTENSIONS = {
     ".csv",
     ".txt",
 }
-RENDERABLE_ATTACHMENT_EXTENSIONS = {".pdf", ".docx", ".xlsx"}
+RENDERABLE_ATTACHMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".xlsx"}
 ATTACHMENT_HINT_KEYWORDS = ("附件", "报名表", "岗位表", "职位表", "应聘表", "下载")
 INLINE_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 POSITION_ATTACHMENT_KEYWORDS = ("岗位", "职位", "一览表", "需求表", "岗位表", "职位表", "招聘计划")
@@ -144,6 +148,26 @@ SHORT_TEXT_COLUMN_KEYWORDS = (
     "性别",
 )
 MEDIUM_TEXT_COLUMN_KEYWORDS = ("岗位", "科室", "名称", "部门", "方向", "专业", "要求")
+RAW_ATTACHMENT_SELECTORS = (
+    "#attachContainer a[href]",
+    ".attach-container a[href]",
+    ".attachBox a[href]",
+    ".fk-attach-download-table a[href]",
+    ".attachName-container a[href]",
+    "a.attachName[href]",
+)
+LEGACY_DOC_STANDARD_HEADERS = [
+    "序号",
+    "单位",
+    "科室",
+    "岗位",
+    "数量（人）",
+    "学历",
+    "专业",
+    "执业（职称）条件",
+    "其他条件",
+]
+LEGACY_DOC_PAGE_MARKER_PATTERN = re.compile(r"page\s+\\\*\s+mergeformat", re.I)
 
 
 @dataclass
@@ -330,7 +354,7 @@ class DetailPipeline:
 
         soup = BeautifulSoup(cleaned_html, "lxml")
         await self._localize_inline_images(soup, inline_dir, runtime_config, manifest, article_dir)
-        attachments = self._discover_attachments(soup, url, rule)
+        attachments = self._discover_attachments(soup, url, rule, raw_html=raw_html)
         await self._download_and_render_attachments(
             attachments,
             attachments_dir,
@@ -686,18 +710,22 @@ class DetailPipeline:
         soup: BeautifulSoup,
         base_url: str,
         rule: DetailRule,
+        raw_html: str = "",
     ) -> List[Dict[str, Any]]:
         attachments: List[Dict[str, Any]] = []
         seen_urls = set()
 
-        explicit_nodes: List[Tag] = []
-        for selector in rule.attachment_selectors:
-            try:
-                explicit_nodes.extend(soup.select(selector))
-            except Exception:
-                continue
+        explicit_nodes = self._collect_attachment_nodes(soup, rule.attachment_selectors)
+        nodes: List[Tag] = explicit_nodes or list(soup.find_all("a", href=True))
 
-        nodes = explicit_nodes or list(soup.find_all("a", href=True))
+        if raw_html:
+            raw_soup = BeautifulSoup(raw_html, "lxml")
+            raw_explicit_nodes = self._collect_attachment_nodes(raw_soup, rule.attachment_selectors)
+            raw_fallback_nodes = self._collect_attachment_nodes(raw_soup, RAW_ATTACHMENT_SELECTORS)
+            for node in raw_explicit_nodes + raw_fallback_nodes:
+                if node not in nodes:
+                    nodes.append(node)
+
         for index, node in enumerate(nodes, start=1):
             href = urljoin(base_url, (node.get("href") or "").strip())
             if not href or href in seen_urls:
@@ -719,6 +747,23 @@ class DetailPipeline:
                 }
             )
         return attachments
+
+    @staticmethod
+    def _collect_attachment_nodes(soup: BeautifulSoup, selectors: List[str] | tuple[str, ...]) -> List[Tag]:
+        nodes: List[Tag] = []
+        seen: set[int] = set()
+        for selector in selectors:
+            try:
+                matched = soup.select(selector)
+            except Exception:
+                continue
+            for node in matched:
+                identifier = id(node)
+                if identifier in seen:
+                    continue
+                seen.add(identifier)
+                nodes.append(node)
+        return nodes
 
     async def _download_and_render_attachments(
         self,
@@ -786,9 +831,129 @@ class DetailPipeline:
             return await asyncio.to_thread(self._render_pdf, attachment_path, renders_dir)
         if ext == ".xlsx":
             return await asyncio.to_thread(self._render_xlsx, attachment_path, renders_dir)
+        if ext == ".doc":
+            return await asyncio.to_thread(self._render_doc, attachment_path, renders_dir)
         if ext == ".docx":
             return await asyncio.to_thread(self._render_docx, attachment_path, renders_dir)
         return [], "unsupported"
+
+    def _render_doc(self, attachment_path: Path, renders_dir: Path) -> Tuple[List[Path], str]:
+        table_render = self._render_doc_table_with_textutil(attachment_path, renders_dir)
+        if table_render[0]:
+            return table_render
+
+        converted_path = self._convert_legacy_doc_to_docx(attachment_path)
+        if converted_path is None:
+            return [], "unsupported"
+        try:
+            return self._render_docx(converted_path, renders_dir)
+        finally:
+            try:
+                converted_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    def _render_doc_table_with_textutil(
+        self,
+        attachment_path: Path,
+        renders_dir: Path,
+    ) -> Tuple[List[Path], str]:
+        textutil = shutil.which("textutil")
+        if not textutil:
+            return [], "unsupported"
+
+        temp_dir = Path(tempfile.mkdtemp(prefix="legacy_doc_text_"))
+        txt_path = temp_dir / f"{attachment_path.stem}.txt"
+        try:
+            subprocess.run(
+                [textutil, "-convert", "txt", "-output", str(txt_path), str(attachment_path)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            if not txt_path.exists():
+                return [], "unsupported"
+
+            doc_title, rows = _extract_legacy_doc_table_rows_from_text(
+                txt_path.read_text(encoding="utf-8", errors="ignore")
+            )
+            if len(rows) <= 1:
+                return [], "unsupported"
+
+            rendered_paths: List[Path] = []
+            header = rows[0]
+            data_rows = rows[1:]
+            chunk_size = 6 if len(data_rows) > 6 else len(data_rows)
+            for chunk_index, chunk in enumerate(_chunk_rows(data_rows, chunk_size), start=1):
+                output_path = renders_dir / f"{attachment_path.stem}_{chunk_index}.png"
+                self._render_table_rows_to_image(
+                    title=doc_title or attachment_path.stem,
+                    rows=[header, *chunk],
+                    output_path=output_path,
+                )
+                rendered_paths.append(output_path)
+            return rendered_paths, "rendered" if rendered_paths else "empty"
+        except Exception as exc:
+            logger.warning("textutil DOC 表格转图失败: %s", exc)
+            return [], "unsupported"
+        finally:
+            try:
+                txt_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            try:
+                temp_dir.rmdir()
+            except Exception:
+                pass
+
+    def _convert_legacy_doc_to_docx(self, attachment_path: Path) -> Optional[Path]:
+        temp_dir = Path(tempfile.mkdtemp(prefix="legacy_doc_render_"))
+        output_path = temp_dir / f"{attachment_path.stem}.docx"
+
+        textutil = shutil.which("textutil")
+        if textutil:
+            try:
+                subprocess.run(
+                    [textutil, "-convert", "docx", "-output", str(output_path), str(attachment_path)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                if output_path.exists():
+                    return output_path
+            except Exception as exc:
+                logger.warning("textutil 转换 DOC 失败: %s", exc)
+
+        for office_cmd in ("soffice", "libreoffice"):
+            binary = shutil.which(office_cmd)
+            if not binary:
+                continue
+            try:
+                subprocess.run(
+                    [
+                        binary,
+                        "--headless",
+                        "--convert-to",
+                        "docx",
+                        "--outdir",
+                        str(temp_dir),
+                        str(attachment_path),
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                office_output = temp_dir / f"{attachment_path.stem}.docx"
+                if office_output.exists():
+                    return office_output
+            except Exception as exc:
+                logger.warning("%s 转换 DOC 失败: %s", office_cmd, exc)
+
+        try:
+            temp_dir.rmdir()
+        except Exception:
+            pass
+        return None
 
     def _render_pdf(self, attachment_path: Path, renders_dir: Path) -> Tuple[List[Path], str]:
         if fitz is None:
@@ -900,13 +1065,13 @@ class DetailPipeline:
         if not normalized_rows:
             raise RuntimeError("没有可渲染的表格行")
 
-        width = 1600
+        width = 1800
         margin = 40
         header_height = 86
-        row_padding_y = 18
+        row_padding_y = 14
         title_font = _load_font(28)
         header_font = _load_font(22)
-        body_font = _load_font(20)
+        body_font = _load_font(18)
 
         col_count = max(len(row) for row in normalized_rows)
         prepared_rows = [row + [""] * (col_count - len(row)) for row in normalized_rows]
@@ -925,7 +1090,7 @@ class DetailPipeline:
                 wrapped_cells.append(wrapped)
                 max_lines = max(max_lines, len(wrapped))
             row_layouts.append(wrapped_cells)
-            row_heights.append(max_lines * 30 + row_padding_y * 2)
+            row_heights.append(max_lines * 28 + row_padding_y * 2)
 
         total_height = header_height + sum(row_heights) + margin * 2
         image = Image.new("RGB", (width, total_height), "#fffdf8")
@@ -958,7 +1123,7 @@ class DetailPipeline:
                 line_y = y + row_padding_y
                 for line in cell_lines:
                     drawer.text((x + 12, line_y), line, font=font, fill="#25362d")
-                    line_y += 30
+                    line_y += 28
                 x += cell_width
             y += row_height
         image.save(output_path)
@@ -1369,6 +1534,111 @@ def _extract_text_lines_from_html(soup: BeautifulSoup) -> List[str]:
     return [line.strip() for line in fallback_text.splitlines() if line.strip()]
 
 
+def _extract_legacy_doc_table_rows_from_text(text: str) -> Tuple[str, List[List[str]]]:
+    normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n").replace("\u2028", "\n")
+    lines = [line.strip() for line in normalized.splitlines() if line.strip()]
+    if not lines:
+        return "", []
+
+    table_start = next((index for index, line in enumerate(lines) if "\x07" in line), -1)
+    if table_start < 0:
+        return "", []
+
+    title_lines = [line for line in lines[:table_start] if line]
+    doc_title = next((line for line in reversed(title_lines) if len(line) >= 6), title_lines[-1] if title_lines else "")
+    table_text = "\n".join(lines[table_start:])
+    chunks = [chunk for chunk in re.split(r"\x07{2,}(?=\d+\x07)", table_text) if chunk.strip()]
+    if len(chunks) < 2:
+        return doc_title, []
+
+    data_rows = [_split_legacy_doc_row(chunk) for chunk in chunks[1:]]
+    column_count = _infer_legacy_doc_column_count(data_rows)
+    if column_count < 4:
+        return doc_title, []
+
+    header_row = _build_legacy_doc_header_row(chunks[0], column_count)
+    rows = [header_row]
+    merged_unit_value = ""
+    for chunk in chunks[1:]:
+        cells = _split_legacy_doc_row(chunk)
+        if _looks_like_legacy_doc_page_marker(cells):
+            continue
+        cells = _normalize_legacy_doc_row(cells, column_count)
+        if not cells:
+            continue
+        if column_count >= 2:
+            if cells[1]:
+                merged_unit_value = cells[1]
+            elif merged_unit_value:
+                cells[1] = merged_unit_value
+        rows.append(cells)
+
+    return doc_title, rows
+
+
+def _split_legacy_doc_row(chunk: str) -> List[str]:
+    cells = [part.strip() for part in chunk.split("\x07")]
+    while cells and not cells[0]:
+        cells.pop(0)
+    while cells and not cells[-1]:
+        cells.pop()
+    return [re.sub(r"\n{3,}", "\n\n", cell) for cell in cells]
+
+
+def _build_legacy_doc_header_row(header_chunk: str, column_count: int) -> List[str]:
+    if column_count == len(LEGACY_DOC_STANDARD_HEADERS):
+        return LEGACY_DOC_STANDARD_HEADERS
+
+    tokens = [token for token in _split_legacy_doc_row(header_chunk) if token]
+    if (
+        column_count == len(LEGACY_DOC_STANDARD_HEADERS)
+        and "岗位条件" in tokens
+        and "执业（职称）条件" in tokens
+        and "其他条件" in tokens
+    ):
+        return LEGACY_DOC_STANDARD_HEADERS
+    if len(tokens) >= column_count:
+        return tokens[:column_count]
+    return tokens + [""] * max(column_count - len(tokens), 0)
+
+
+def _infer_legacy_doc_column_count(rows: List[List[str]]) -> int:
+    counts = Counter(
+        len(row)
+        for row in rows
+        if row and not _looks_like_legacy_doc_page_marker(row) and len(row) >= 5
+    )
+    if counts:
+        return counts.most_common(1)[0][0]
+    return max((len(row) for row in rows), default=0)
+
+
+def _looks_like_legacy_doc_page_marker(cells: List[str]) -> bool:
+    return any(LEGACY_DOC_PAGE_MARKER_PATTERN.search(cell or "") for cell in cells)
+
+
+def _normalize_legacy_doc_row(cells: List[str], column_count: int) -> List[str]:
+    cleaned = [_strip_legacy_doc_noise(cell) for cell in cells]
+    while cleaned and not cleaned[-1]:
+        cleaned.pop()
+    if not cleaned or _looks_like_legacy_doc_page_marker(cleaned):
+        return []
+    if len(cleaned) > column_count:
+        head = cleaned[: column_count - 1]
+        tail = [cell for cell in cleaned[column_count - 1 :] if cell]
+        cleaned = head + ["\n".join(tail)]
+    elif len(cleaned) < column_count:
+        cleaned.extend([""] * (column_count - len(cleaned)))
+    return cleaned
+
+
+def _strip_legacy_doc_noise(value: str) -> str:
+    normalized = (value or "").strip()
+    normalized = LEGACY_DOC_PAGE_MARKER_PATTERN.sub("", normalized)
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+    return normalized.strip()
+
+
 def _extract_docx_content(docx_path: Path) -> Tuple[List[str], List[List[List[str]]]]:
     ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
     try:
@@ -1490,6 +1760,9 @@ def _estimate_column_widths(
 
     col_count = max(len(row) for row in rows)
     headers = [rows[0][index].strip() if rows and index < len(rows[0]) else "" for index in range(col_count)]
+    preset_widths = _preset_column_widths(headers, total_width)
+    if preset_widths is not None:
+        return preset_widths
     weights = [_column_weight_hint(header) for header in headers]
     for row in rows[: min(len(rows), 12)]:
         for index in range(col_count):
@@ -1553,6 +1826,16 @@ def _estimate_column_widths(
     anchor_index = max(range(col_count), key=lambda idx: weights[idx])
     col_widths[anchor_index] += diff
     return col_widths
+
+
+def _preset_column_widths(headers: List[str], total_width: int) -> Optional[List[int]]:
+    if [header.strip() for header in headers] != LEGACY_DOC_STANDARD_HEADERS:
+        return None
+
+    ratios = [0.05, 0.12, 0.09, 0.10, 0.06, 0.15, 0.13, 0.08, 0.22]
+    widths = [max(80, int(total_width * ratio)) for ratio in ratios]
+    widths[-1] += total_width - sum(widths)
+    return widths
 
 
 def _classify_column_text_density(header: str) -> str:
