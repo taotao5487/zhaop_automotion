@@ -22,6 +22,11 @@ from bs4.element import Tag
 from crawler.core.database import db_manager
 from crawler.core.waf_detector import WAFDetector
 from crawler.spiders.base_spider import BaseSpider
+from wechat_service.utils.recruitment_keyword_sets import (
+    NON_RECRUITMENT_SUPPLEMENTAL_KEYWORDS,
+    POST_RECRUITMENT_EXCLUDE_KEYWORDS,
+    merge_keyword_lists,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +34,10 @@ DEFAULT_RECRUITMENT_KEEP_KEYWORDS = [
     '招聘', '招考', '招录', '引进', '人才', '医师', '护士', '规培',
     '住培', '博士后', '面试', '笔试', '资格复审', '录用', '应聘',
 ]
-DEFAULT_RECRUITMENT_EXCLUDE_KEYWORDS = [
-    '招标', '采购', '比选', '遴选', '询价', '谈判', '磋商', '中标',
-    '成交', '废标', '流标', '维保', '项目', '调研', '征集', '设备',
-    '耗材', '试剂',
-]
+DEFAULT_RECRUITMENT_EXCLUDE_KEYWORDS = merge_keyword_lists(
+    POST_RECRUITMENT_EXCLUDE_KEYWORDS,
+    NON_RECRUITMENT_SUPPLEMENTAL_KEYWORDS,
+)
 SELECTOR_DISCOVERY_KEYWORDS = tuple(dict.fromkeys([
     *DEFAULT_RECRUITMENT_KEEP_KEYWORDS,
     '公告', '通知', '简章', '公示', '录取', '报名', '招聘信息',
@@ -303,11 +307,15 @@ class CrawlerEngine:
         self.export_enabled = export_config.get('enabled', True)
         self.export_directory = export_config.get('directory', 'data/exports')
         self.recruitment_filter_enabled = recruitment_filter.get('enabled', True)
-        self.recruitment_keep_keywords = list(
-            recruitment_filter.get('keep_keywords') or DEFAULT_RECRUITMENT_KEEP_KEYWORDS
+        configured_keep_keywords = recruitment_filter.get('keep_keywords') or []
+        configured_exclude_keywords = recruitment_filter.get('exclude_keywords') or []
+        self.recruitment_keep_keywords = merge_keyword_lists(
+            DEFAULT_RECRUITMENT_KEEP_KEYWORDS,
+            configured_keep_keywords,
         )
-        self.recruitment_exclude_keywords = list(
-            recruitment_filter.get('exclude_keywords') or DEFAULT_RECRUITMENT_EXCLUDE_KEYWORDS
+        self.recruitment_exclude_keywords = merge_keyword_lists(
+            DEFAULT_RECRUITMENT_EXCLUDE_KEYWORDS,
+            configured_exclude_keywords,
         )
         self.global_waf_config = dict(
             self.global_config.get('waf') or self.global_config.get('waf_strategy') or {}
@@ -453,6 +461,7 @@ class CrawlerEngine:
                             'selector': title_selector,
                             'type': 'text',
                             'required': True,
+                            'field_name': 'title',
                             'transform': 'strip',
                         },
                         'url': {
@@ -460,6 +469,7 @@ class CrawlerEngine:
                             'type': 'attr',
                             'attr': 'href',
                             'required': True,
+                            'field_name': 'url',
                             'transform': 'absolute_url',
                         },
                         'hospital': {
@@ -2665,11 +2675,11 @@ class CrawlerEngine:
         if not title or not self.recruitment_filter_enabled:
             return bool(title)
 
-        if self._title_matches_keywords(title, self.recruitment_keep_keywords):
-            return True
-
         if self._title_matches_keywords(title, self.recruitment_exclude_keywords):
             return False
+
+        if self._title_matches_keywords(title, self.recruitment_keep_keywords):
+            return True
 
         return True
 
@@ -2718,10 +2728,6 @@ class CrawlerEngine:
             if not all(field in job_data and job_data[field] for field in required_fields):
                 logger.warning(f"职位数据缺少必要字段: {job_data.get('title', 'Unknown')}")
                 continue
-
-            # 当前模型要求publish_date非空，标题+URL场景使用crawl_time兜底
-            if not job_data.get('publish_date'):
-                job_data['publish_date'] = datetime.now()
 
             saved_job, is_new = await db_manager.save_or_update_job(
                 job_data,

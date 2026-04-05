@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+from collections import Counter
 from datetime import datetime, date
 from typing import Dict, List, Optional, Any, Tuple
 from urllib.parse import urljoin, urlparse
@@ -18,6 +19,7 @@ class BaseSpider:
         self.config = config
         self.site_name = config.get('site_name', '')
         self.base_url = config.get('base_url', '')
+        self.hospital_name = self._resolve_hospital_name(config)
         self.session: Optional[aiohttp.ClientSession] = None
 
     async def init_session(self, session: aiohttp.ClientSession):
@@ -51,6 +53,7 @@ class BaseSpider:
 
             container_selector = parsing_config.get('container_selector')
             item_selector = parsing_config.get('item_selector')
+            fields_config = parsing_config.get('fields', {})
 
             if not container_selector or not item_selector:
                 logger.warning(f"网站 {self.site_name} 未配置列表页解析规则")
@@ -73,6 +76,7 @@ class BaseSpider:
                     continue
 
                 logger.info(f"解析到 {len(job_elements)} 个职位项")
+                job_elements = self._filter_viable_job_elements(job_elements, fields_config)
 
                 jobs = []
                 for element in job_elements:
@@ -129,7 +133,7 @@ class BaseSpider:
             fields_config = parsing_config.get('fields', {})
 
             for field_name, field_config in fields_config.items():
-                value = self._extract_field(element, field_config)
+                value = self._extract_field(element, field_config, field_name=field_name)
                 if value is not None or not field_config.get('required', False):
                     job_data[field_name] = value
                 else:
@@ -144,6 +148,11 @@ class BaseSpider:
             if 'url' in job_data and job_data['url']:
                 job_data['url'] = self._make_absolute_url(job_data['url'])
 
+            if not job_data.get('publish_date'):
+                inferred_publish_date = self._infer_publish_date(element)
+                if inferred_publish_date:
+                    job_data['publish_date'] = inferred_publish_date
+
             return job_data
 
         except Exception as e:
@@ -152,19 +161,22 @@ class BaseSpider:
 
     def _extract_field(self,
                       element: Any,
-                      field_config: Dict[str, Any]) -> Any:
+                      field_config: Dict[str, Any],
+                      field_name: Optional[str] = None,
+                      emit_warning: bool = True) -> Any:
         """提取单个字段"""
         try:
             selector = field_config.get('selector')
             if not selector:
                 return field_config.get('default')
 
+            resolved_field_name = field_name or field_config.get('field_name', 'unknown')
             field_element = self._select_field_element(element, selector)
             if not field_element:
                 # 如果是必需字段且没有找到元素，则返回None
                 if field_config.get('required', False):
-                    field_name = field_config.get('field_name', 'unknown')
-                    logger.warning(f"字段 {field_name} 提取失败: 选择器 '{selector}' 未匹配到任何元素")
+                    if emit_warning:
+                        logger.warning(f"字段 {resolved_field_name} 提取失败: 选择器 '{selector}' 未匹配到任何元素")
                     return None
                 return field_config.get('default')
 
@@ -187,8 +199,10 @@ class BaseSpider:
 
                 # 对于URL字段，如果获取到的值是None或空，需要特别处理
                 if field_config.get('required', False) and not value:
-                    field_name = field_config.get('field_name', 'unknown')
-                    logger.warning(f"字段 {field_name} 提取失败: 选择器 '{field_config['selector']}' 找到了元素但属性值为空")
+                    if emit_warning:
+                        logger.warning(
+                            f"字段 {resolved_field_name} 提取失败: 选择器 '{field_config['selector']}' 找到了元素但属性值为空"
+                        )
                     return None
             elif field_type == 'html':
                 value = str(field_element)
@@ -204,6 +218,78 @@ class BaseSpider:
         except Exception as e:
             logger.error(f"提取字段失败: {field_config}, 错误: {e}")
             return field_config.get('default')
+
+    @staticmethod
+    def _resolve_hospital_name(config: Dict[str, Any]) -> str:
+        parsing = config.get('parsing', {}).get('list_page', {})
+        hospital_default = (
+            parsing.get('fields', {})
+            .get('hospital', {})
+            .get('default')
+        )
+        return str(hospital_default or config.get('hospital_name') or config.get('site_name') or '').strip()
+
+    def _filter_viable_job_elements(
+        self,
+        job_elements: List[Any],
+        fields_config: Dict[str, Any],
+    ) -> List[Any]:
+        """跳过明显缺少必需字段的候选节点，避免逐条 warning 刷屏"""
+        required_fields = {
+            field_name: field_config
+            for field_name, field_config in fields_config.items()
+            if field_config.get('required', False)
+        }
+        if not required_fields:
+            return job_elements
+
+        viable_elements: List[Any] = []
+        missing_patterns: Counter[Tuple[str, ...]] = Counter()
+
+        for element in job_elements:
+            missing_fields = [
+                field_name
+                for field_name, field_config in required_fields.items()
+                if self._extract_field(
+                    element,
+                    field_config,
+                    field_name=field_name,
+                    emit_warning=False,
+                ) is None
+            ]
+            if missing_fields:
+                missing_patterns[tuple(missing_fields)] += 1
+                continue
+            viable_elements.append(element)
+
+        skipped_count = len(job_elements) - len(viable_elements)
+        if skipped_count <= 0:
+            return viable_elements
+
+        missing_summary = "; ".join(
+            f"{'+'.join(pattern)}={count}"
+            for pattern, count in missing_patterns.most_common()
+        )
+        site_summary = f"site={self.site_name}, hospital={self.hospital_name or self.site_name}"
+
+        if viable_elements:
+            logger.info(
+                "列表候选节点已过滤: %s, total=%d, kept=%d, skipped=%d, missing=%s",
+                site_summary,
+                len(job_elements),
+                len(viable_elements),
+                skipped_count,
+                missing_summary,
+            )
+        else:
+            logger.warning(
+                "列表候选节点全部缺少必需字段: %s, total=%d, missing=%s",
+                site_summary,
+                len(job_elements),
+                missing_summary,
+            )
+
+        return viable_elements
 
     @staticmethod
     def _select_field_element(element: Any, selector: str) -> Any:
@@ -343,6 +429,56 @@ class BaseSpider:
         except Exception as e:
             logger.error(f"应用转换失败: {transform}, 值: {value}, 错误: {e}")
             return value
+
+    def _infer_publish_date(self, element: Any) -> Optional[datetime]:
+        """从列表项文本中尽量提取真实发布日期"""
+        candidate_texts: List[str] = []
+        selector_candidates = (
+            'time',
+            'span.time',
+            'span.date',
+            'div.time',
+            'div.date',
+            'p.time',
+            'p.date',
+            'em.time',
+            'em.date',
+        )
+
+        for selector in selector_candidates:
+            node = element.select_one(selector)
+            if node:
+                text = node.get_text(" ", strip=True)
+                if text:
+                    candidate_texts.append(text)
+
+        full_text = element.get_text(" ", strip=True)
+        if full_text:
+            candidate_texts.append(full_text)
+
+        seen = set()
+        for text in candidate_texts:
+            for candidate in self._extract_date_candidates(text):
+                normalized = candidate.strip()
+                if not normalized or normalized in seen:
+                    continue
+                seen.add(normalized)
+                parsed = self._parse_date(normalized)
+                if parsed:
+                    return parsed
+
+        return None
+
+    @staticmethod
+    def _extract_date_candidates(text: str) -> List[str]:
+        patterns = (
+            r'\d{4}[-/.]\d{1,2}[-/.]\d{1,2}',
+            r'\d{4}年\d{1,2}月\d{1,2}日?',
+        )
+        matches: List[str] = []
+        for pattern in patterns:
+            matches.extend(re.findall(pattern, text))
+        return matches
 
     def _make_absolute_url(self, url: str) -> str:
         """转换为绝对URL"""

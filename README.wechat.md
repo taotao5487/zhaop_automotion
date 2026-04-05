@@ -233,6 +233,9 @@ cp env.example .env
 # 推送最新一篇未进入共享草稿串的 confirmed 招聘文章
 curl -X POST "http://localhost:5001/api/recruitment/official-draft/series/push"
 
+# 批量推送当前所有可推送的 confirmed 招聘文章
+curl -X POST "http://localhost:5001/api/recruitment/official-draft/series/push?all=true"
+
 # 推送指定招聘原文到共享草稿串
 curl -X POST "http://localhost:5001/api/recruitment/official-draft/series/push?source_url=https://example.com/recruit/123"
 

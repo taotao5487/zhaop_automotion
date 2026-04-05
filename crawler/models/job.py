@@ -13,7 +13,7 @@ class MedicalJob(Base):
     id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)
     url = Column(String, unique=True, nullable=False)
-    publish_date = Column(DateTime, nullable=False)
+    publish_date = Column(DateTime, nullable=True)
     hospital = Column(String)
     location = Column(String)
     source_site = Column(String)

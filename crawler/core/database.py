@@ -1,4 +1,5 @@
 import logging
+import sqlite3
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy import create_engine, select
@@ -37,6 +38,71 @@ def _coerce_datetime(value: Any) -> Optional[datetime]:
     return None
 
 
+def _normalize_job_datetimes(job_data: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(job_data)
+    for field_name in ("publish_date", "crawl_time"):
+        if field_name in normalized:
+            normalized[field_name] = _coerce_datetime(normalized.get(field_name))
+    return normalized
+
+
+def _needs_publish_date_nullable_migration(db_path: str) -> bool:
+    try:
+        connection = sqlite3.connect(db_path)
+        try:
+            columns = list(connection.execute("PRAGMA table_info(medical_jobs)"))
+        finally:
+            connection.close()
+    except sqlite3.Error:
+        return False
+
+    for column in columns:
+        if len(column) >= 4 and column[1] == "publish_date":
+            return bool(column[3])
+    return False
+
+
+def _migrate_publish_date_nullable(db_path: str) -> bool:
+    if not _needs_publish_date_nullable_migration(db_path):
+        return False
+
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.execute("BEGIN")
+        connection.execute(
+            """
+            CREATE TABLE medical_jobs__codex_migrate (
+                id INTEGER PRIMARY KEY,
+                title VARCHAR NOT NULL,
+                url VARCHAR NOT NULL UNIQUE,
+                publish_date DATETIME,
+                hospital VARCHAR,
+                location VARCHAR,
+                source_site VARCHAR,
+                crawl_time DATETIME,
+                is_new BOOLEAN
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO medical_jobs__codex_migrate
+            (id, title, url, publish_date, hospital, location, source_site, crawl_time, is_new)
+            SELECT id, title, url, publish_date, hospital, location, source_site, crawl_time, is_new
+            FROM medical_jobs
+            """
+        )
+        connection.execute("DROP TABLE medical_jobs")
+        connection.execute("ALTER TABLE medical_jobs__codex_migrate RENAME TO medical_jobs")
+        connection.commit()
+        return True
+    except sqlite3.Error:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 class DatabaseManager:
     """数据库管理器"""
 
@@ -52,6 +118,9 @@ class DatabaseManager:
         """初始化同步数据库连接"""
         self.engine = create_engine(f"sqlite:///{self.db_path}", echo=False)
         Base.metadata.create_all(self.engine)
+        migrated = _migrate_publish_date_nullable(self.db_path)
+        if migrated:
+            logger.info("数据库迁移完成: medical_jobs.publish_date 已允许为空")
         self.Session = sessionmaker(bind=self.engine)
         logger.info(f"同步数据库初始化完成: {self.db_path}")
 
@@ -64,6 +133,9 @@ class DatabaseManager:
         )
         async with self.async_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        migrated = _migrate_publish_date_nullable(self.db_path)
+        if migrated:
+            logger.info("数据库迁移完成: medical_jobs.publish_date 已允许为空")
         self.AsyncSession = async_sessionmaker(
             bind=self.async_engine,
             expire_on_commit=False
@@ -95,8 +167,9 @@ class DatabaseManager:
         """保存或更新招聘职位，返回(职位对象, 是否新插入)"""
         async with await self.get_async_session() as session:
             try:
+                normalized_job_data = _normalize_job_datetimes(job_data)
                 # 检查是否已存在
-                stmt = select(MedicalJob).where(MedicalJob.url == job_data['url'])
+                stmt = select(MedicalJob).where(MedicalJob.url == normalized_job_data['url'])
                 result = await session.execute(stmt)
                 existing_job = result.scalar_one_or_none()
 
@@ -105,21 +178,21 @@ class DatabaseManager:
                         return existing_job, False
 
                     # 更新现有记录
-                    for key, value in job_data.items():
+                    for key, value in normalized_job_data.items():
                         if hasattr(existing_job, key):
                             setattr(existing_job, key, value)
                     existing_job.crawl_time = datetime.now()
                     existing_job.is_new = False
                 else:
                     # 创建新记录
-                    new_job = MedicalJob(**job_data)
+                    new_job = MedicalJob(**normalized_job_data)
                     new_job.crawl_time = datetime.now()
                     new_job.is_new = True
                     session.add(new_job)
                     existing_job = new_job
 
                 await session.commit()
-                logger.debug(f"职位保存成功: {job_data.get('title', 'Unknown')}")
+                logger.debug(f"职位保存成功: {normalized_job_data.get('title', 'Unknown')}")
                 return existing_job, existing_job.is_new is True
 
             except SQLAlchemyError as e:

@@ -172,6 +172,169 @@ def test_discover_attachments_falls_back_to_raw_attachment_blocks():
     assert attachments[0]["source_url"] == "https://download.example.com/files/apply.docx"
 
 
+def test_extract_cleaned_html_prefers_vsb_content_container_over_body():
+    class FakeCrawler:
+        site_configs = {}
+        session = object()
+
+    pipeline = DetailPipeline(FakeCrawler())
+    raw_html = """
+    <html>
+      <body>
+        <div class="fixed">
+          <ul>
+            <li><a href="/ylfw/yygh.htm">预约挂号</a></li>
+            <li><a href="/xjlb.jsp">网上咨询</a></li>
+          </ul>
+        </div>
+        <div class="container page-con clearfix">
+          <h1 class="page-tit">重庆医科大学附属大学城医院妇产科全职博士后招聘启事</h1>
+          <div class="page-date">发布时间 : 2026-04-03</div>
+          <div id="vsb_content_500" class="zhengwen">
+            <div class="v_news_content">
+              <p>因学科发展和科研工作需要，现面向海内外招聘优秀博士后研究人员若干名。</p>
+              <p>申请者可将个人简历发送至指定邮箱。</p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+
+    cleaned_html, cleaned_title, extraction_method = pipeline._extract_cleaned_html(
+        raw_html,
+        "http://www.uhcmu.com/info/1259/13109.htm",
+        "重庆医科大学附属大学城医院妇产科全职博士后招聘启事",
+        pipeline.get_rule(""),
+    )
+
+    assert extraction_method == "selectors"
+    assert "博士后研究人员若干名" in cleaned_html
+    assert "预约挂号" not in cleaned_html
+    assert cleaned_title == "重庆医科大学附属大学城医院妇产科全职博士后招聘启事"
+
+
+def test_discover_attachments_ignores_download_zone_navigation_pages():
+    from bs4 import BeautifulSoup
+
+    class FakeCrawler:
+        site_configs = {}
+        session = object()
+
+    pipeline = DetailPipeline(FakeCrawler())
+    cleaned_soup = BeautifulSoup(
+        """
+        <article>
+          <div class="v_news_content">
+            <p>因学科发展和科研工作需要，现面向海内外招聘优秀博士后研究人员若干名。</p>
+            <p>申请者可将个人简历发送至指定邮箱。</p>
+            <p><a href="http://www.uhcmu.com/jypx/yjsjy/xzzq.htm">下载专区</a></p>
+          </div>
+        </article>
+        """,
+        "lxml",
+    )
+
+    attachments = pipeline._discover_attachments(
+        cleaned_soup,
+        "http://www.uhcmu.com/info/1259/13109.htm",
+        pipeline.get_rule(""),
+    )
+
+    assert attachments == []
+
+
+@pytest.mark.asyncio
+async def test_process_job_fetches_cqgwzx_detail_content_from_api_when_shell_page_is_empty(tmp_path):
+    shell_html = """
+    <!doctype html>
+    <html lang="zh-CN">
+      <head>
+        <title>重庆市公共卫生医疗救治中心</title>
+        <script type="module" src="/assets/index-3d7b9b71.js"></script>
+      </head>
+      <body><div id="app"></div></body>
+    </html>
+    """
+    detail_payload = {
+        "code": 200,
+        "msg": "操作成功",
+        "data": {
+            "id": 5776,
+            "title": "中心公开招募高层次人才公告",
+            "publishTime": "2026-04-03 08:47:46",
+            "content": (
+                "<p>因中心学科及专科发展需要，现面向社会公开招募高层次人才。</p>"
+                "<p>有意者请将简历发送至指定邮箱。</p>"
+            ),
+            "fileList": [],
+            "relationLinkVos": None,
+            "outsideLink": "",
+        },
+    }
+
+    class FakeResponse:
+        status = 200
+        charset = "utf-8"
+
+        async def read(self):
+            return json.dumps(detail_payload, ensure_ascii=False).encode("utf-8")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeSession:
+        def get(self, url, **kwargs):
+            assert url.endswith("/prod-api/api/article/getArticleDetail")
+            assert kwargs["params"] == {"id": "5776"}
+            return FakeResponse()
+
+    class FakeCrawler:
+        site_configs = {}
+
+        def __init__(self):
+            self.session = FakeSession()
+
+        async def init_session(self):
+            self.session = FakeSession()
+
+        async def fetch_page_with_metadata(self, url, config):
+            return {
+                "success": True,
+                "content": shell_html,
+                "fetch_backend": "aiohttp",
+                "failure_category": "",
+            }
+
+    pipeline = DetailPipeline(
+        FakeCrawler(),
+        output_root=str(tmp_path / "details"),
+        review_output_root=str(tmp_path / "wechat_review"),
+    )
+
+    result = await pipeline.process_job(
+        {
+            "title": "中心公开招募高层次人才公告",
+            "url": "https://www.cqgwzx.com/article-detail?id=5776",
+            "hospital": "重庆市公共卫生医疗救治中心",
+            "source_site": "site_158_158",
+        },
+        tmp_path / "details" / "20260403_220526",
+        datetime(2026, 4, 3, 22, 5, 26),
+    )
+
+    manifest = json.loads(Path(result["manifest_path"]).read_text(encoding="utf-8"))
+    package = json.loads(Path(result["review_package_path"]).read_text(encoding="utf-8"))
+
+    assert manifest["fetch_backend"] == "cqgwzx_api"
+    assert manifest["extraction_method"] == "selectors"
+    assert "公开招募高层次人才" in package["plain_text"]
+    assert "有意者请将简历发送至指定邮箱" in package["content_html"]
+
+
 def test_extract_legacy_doc_table_rows_from_text_parses_bell_delimited_rows():
     from crawler.core.detail_pipeline import _extract_legacy_doc_table_rows_from_text
 

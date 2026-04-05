@@ -155,10 +155,10 @@ async def test_recruitment_filter():
 
         assert '设备采购公告' not in filtered_titles
         assert '试剂比选公告' not in filtered_titles
-        assert '公开招聘进入面试资格复审名单' in filtered_titles
+        assert '公开招聘进入面试资格复审名单' not in filtered_titles
         assert '住院医师规范化培训招收简章' in filtered_titles
         assert '人才引进项目招聘公告' in filtered_titles
-        assert filtered_count == 2
+        assert filtered_count == 3
         logger.info("✓ 招聘过滤规则生效正确")
         return True
 
@@ -222,6 +222,141 @@ async def test_incremental_save_modes():
     except Exception as e:
         logger.error(f"增量/非增量保存语义测试失败: {e}")
         return False
+
+
+def test_save_or_update_job_coerces_string_publish_date():
+    """测试字符串发布时间会在入库前转换为 datetime"""
+    logger.info("测试字符串发布时间入库转换...")
+
+    async def _run():
+        with TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "jobs.db")
+            temp_db = DatabaseManager(db_path=db_path)
+            await temp_db.init_async()
+
+            job_data = {
+                'title': '测试职位 - 医生',
+                'url': 'https://www.example.com/job/string-date',
+                'publish_date': '2026-03-31',
+                'hospital': '测试医院',
+                'location': '重庆',
+                'source_site': 'test_site',
+            }
+
+            saved_job, is_new = await temp_db.save_or_update_job(job_data, update_existing=True)
+
+            assert saved_job is not None
+            assert is_new is True
+
+            async with await temp_db.get_async_session() as session:
+                result = await session.execute(
+                    select(MedicalJob).where(MedicalJob.url == job_data['url'])
+                )
+                persisted_job = result.scalar_one()
+                assert persisted_job.publish_date == datetime(2026, 3, 31)
+
+            await temp_db.async_engine.dispose()
+
+    asyncio.run(_run())
+    logger.info("✓ 字符串发布时间入库转换成功")
+
+
+def test_save_or_update_job_allows_missing_publish_date():
+    """测试缺少真实发布日期时允许保存空 publish_date"""
+    logger.info("测试空 publish_date 可保存...")
+
+    async def _run():
+        with TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "jobs.db")
+            temp_db = DatabaseManager(db_path=db_path)
+            await temp_db.init_async()
+
+            job_data = {
+                'title': '测试职位 - 无发布日期',
+                'url': 'https://www.example.com/job/no-publish-date',
+                'hospital': '测试医院',
+                'location': '重庆',
+                'source_site': 'test_site',
+            }
+
+            saved_job, is_new = await temp_db.save_or_update_job(job_data, update_existing=True)
+
+            assert saved_job is not None
+            assert is_new is True
+
+            async with await temp_db.get_async_session() as session:
+                result = await session.execute(
+                    select(MedicalJob).where(MedicalJob.url == job_data['url'])
+                )
+                persisted_job = result.scalar_one()
+                assert persisted_job.publish_date is None
+
+            await temp_db.async_engine.dispose()
+
+    asyncio.run(_run())
+    logger.info("✓ 空 publish_date 保存成功")
+
+
+def test_init_async_migrates_legacy_publish_date_not_null_schema():
+    """测试旧版 publish_date NOT NULL 的 SQLite 表会自动迁移"""
+    logger.info("测试旧版 publish_date 非空约束迁移...")
+
+    async def _run():
+        with TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "jobs.db"
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            conn.execute(
+                '''
+                CREATE TABLE medical_jobs (
+                    id INTEGER PRIMARY KEY,
+                    title VARCHAR NOT NULL,
+                    url VARCHAR NOT NULL UNIQUE,
+                    publish_date DATETIME NOT NULL,
+                    hospital VARCHAR,
+                    location VARCHAR,
+                    source_site VARCHAR,
+                    crawl_time DATETIME,
+                    is_new BOOLEAN
+                )
+                '''
+            )
+            conn.execute(
+                '''
+                INSERT INTO medical_jobs
+                (title, url, publish_date, hospital, location, source_site, crawl_time, is_new)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''',
+                (
+                    '旧职位',
+                    'https://example.com/legacy',
+                    '2026-04-01 00:00:00',
+                    '测试医院',
+                    '重庆',
+                    'test_site',
+                    '2026-04-03 16:00:00',
+                    0,
+                ),
+            )
+            conn.commit()
+            conn.close()
+
+            temp_db = DatabaseManager(db_path=str(db_path))
+            await temp_db.init_async()
+
+            verify_conn = sqlite3.connect(db_path)
+            columns = list(verify_conn.execute("PRAGMA table_info(medical_jobs)"))
+            publish_date_column = next(row for row in columns if row[1] == 'publish_date')
+            rows = list(verify_conn.execute("SELECT title, url, publish_date FROM medical_jobs"))
+            verify_conn.close()
+
+            assert publish_date_column[3] == 0
+            assert rows == [('旧职位', 'https://example.com/legacy', '2026-04-01 00:00:00')]
+
+            await temp_db.async_engine.dispose()
+
+    asyncio.run(_run())
+    logger.info("✓ 旧版 publish_date 非空约束迁移成功")
 
 
 async def test_export_outputs():
@@ -407,6 +542,223 @@ async def test_parsing():
     except Exception as e:
         logger.error(f"解析测试失败: {e}")
         return False
+
+
+def test_parse_list_page_skips_invalid_candidates_without_warning_spam(caplog):
+    """测试宽列表选择器下会跳过无效候选节点，避免重复 warning"""
+    logger.info("测试宽列表候选节点过滤...")
+
+    from crawler.spiders.base_spider import BaseSpider
+
+    test_config = {
+        'site_name': 'test_site',
+        'base_url': 'https://www.example.com',
+        'parsing': {
+            'list_page': {
+                'container_selector': 'body',
+                'item_selector': 'div.card',
+                'fields': {
+                    'title': {
+                        'selector': 'h2.job-title a',
+                        'type': 'text',
+                        'required': True,
+                    },
+                    'url': {
+                        'selector': 'h2.job-title a',
+                        'type': 'attr',
+                        'attr': 'href',
+                        'required': True,
+                        'transform': 'absolute_url',
+                    },
+                    'hospital': {
+                        'default': '测试医院',
+                    },
+                },
+            }
+        }
+    }
+
+    spider = BaseSpider(test_config)
+    test_html = """
+    <html>
+        <body>
+            <div class="card"><span>首页</span></div>
+            <div class="card"><h2 class="job-title"><a href="/job/1">护士</a></h2></div>
+            <div class="card"><span>联系我们</span></div>
+            <div class="card"><h2 class="job-title"><a href="/job/2">医生</a></h2></div>
+        </body>
+    </html>
+    """
+
+    with caplog.at_level(logging.INFO, logger='crawler.spiders.base_spider'):
+        jobs = spider.parse_list_page(test_html)
+
+    assert len(jobs) == 2
+    assert [job['title'] for job in jobs] == ['护士', '医生']
+    assert '字段 title 提取失败，但为必需字段' not in caplog.text
+    assert "选择器 'h2.job-title a' 未匹配到任何元素" not in caplog.text
+    logger.info("✓ 宽列表候选节点过滤成功")
+
+
+def test_parse_list_page_reports_summary_when_all_candidates_invalid(caplog):
+    """测试全部候选节点无效时输出可定位的汇总 warning"""
+    logger.info("测试无效候选节点汇总 warning...")
+
+    from crawler.spiders.base_spider import BaseSpider
+
+    test_config = {
+        'site_name': 'test_site',
+        'base_url': 'https://www.example.com',
+        'parsing': {
+            'list_page': {
+                'container_selector': 'body',
+                'item_selector': 'div.card',
+                'fields': {
+                    'title': {
+                        'selector': 'h2.job-title a',
+                        'type': 'text',
+                        'required': True,
+                        'field_name': 'title',
+                    },
+                    'url': {
+                        'selector': 'h2.job-title a',
+                        'type': 'attr',
+                        'attr': 'href',
+                        'required': True,
+                        'transform': 'absolute_url',
+                        'field_name': 'url',
+                    },
+                    'hospital': {
+                        'default': '测试医院',
+                    },
+                },
+            }
+        }
+    }
+
+    spider = BaseSpider(test_config)
+    test_html = """
+    <html>
+        <body>
+            <div class="card"><span>首页</span></div>
+            <div class="card"><span>联系我们</span></div>
+        </body>
+    </html>
+    """
+
+    with caplog.at_level(logging.WARNING, logger='crawler.spiders.base_spider'):
+        jobs = spider.parse_list_page(test_html)
+
+    assert jobs == []
+    assert 'site=test_site' in caplog.text
+    assert 'hospital=测试医院' in caplog.text
+    assert 'title' in caplog.text
+    assert 'url' in caplog.text
+    logger.info("✓ 无效候选节点汇总 warning 正确")
+
+
+def test_parse_list_page_inferrs_real_publish_date_from_item_text():
+    """测试列表项文本中的真实日期会被自动提取"""
+    logger.info("测试列表项真实日期自动提取...")
+
+    from crawler.spiders.base_spider import BaseSpider
+
+    test_config = {
+        'site_name': 'test_site',
+        'base_url': 'https://www.example.com',
+        'parsing': {
+            'list_page': {
+                'container_selector': 'ul.jobs',
+                'item_selector': 'li',
+                'fields': {
+                    'title': {
+                        'selector': 'a',
+                        'type': 'text',
+                        'required': True,
+                    },
+                    'url': {
+                        'selector': 'a',
+                        'type': 'attr',
+                        'attr': 'href',
+                        'required': True,
+                        'transform': 'absolute_url',
+                    },
+                    'hospital': {
+                        'default': '测试医院',
+                    },
+                },
+            }
+        }
+    }
+
+    spider = BaseSpider(test_config)
+    test_html = """
+    <html>
+        <body>
+            <ul class="jobs">
+                <li><a href="/job/1">护士招聘公告</a><span class="date">2026-04-02</span></li>
+            </ul>
+        </body>
+    </html>
+    """
+
+    jobs = spider.parse_list_page(test_html)
+
+    assert len(jobs) == 1
+    assert jobs[0]['publish_date'] == datetime(2026, 4, 2)
+    logger.info("✓ 列表项真实日期自动提取成功")
+
+
+def test_parse_list_page_leaves_publish_date_empty_when_no_real_date():
+    """测试没有真实日期时不会伪造 publish_date"""
+    logger.info("测试缺少真实日期时不伪造 publish_date...")
+
+    from crawler.spiders.base_spider import BaseSpider
+
+    test_config = {
+        'site_name': 'test_site',
+        'base_url': 'https://www.example.com',
+        'parsing': {
+            'list_page': {
+                'container_selector': 'ul.jobs',
+                'item_selector': 'li',
+                'fields': {
+                    'title': {
+                        'selector': 'a',
+                        'type': 'text',
+                        'required': True,
+                    },
+                    'url': {
+                        'selector': 'a',
+                        'type': 'attr',
+                        'attr': 'href',
+                        'required': True,
+                        'transform': 'absolute_url',
+                    },
+                    'hospital': {
+                        'default': '测试医院',
+                    },
+                },
+            }
+        }
+    }
+
+    spider = BaseSpider(test_config)
+    test_html = """
+    <html>
+        <body>
+            <ul class="jobs">
+                <li><a href="/job/1">护士招聘公告</a></li>
+            </ul>
+        </body>
+    </html>
+    """
+
+    jobs = spider.parse_list_page(test_html)
+
+    assert len(jobs) == 1
+    assert 'publish_date' not in jobs[0] or jobs[0]['publish_date'] is None
+    logger.info("✓ 缺少真实日期时不会伪造 publish_date")
 
 
 async def test_onclick_link_parsing():
@@ -1727,6 +2079,49 @@ async def test_review_queue_candidate_classification():
 
     except Exception as e:
         logger.error(f"审核队列候选分类测试失败: {e}")
+        return False
+
+
+async def test_review_queue_marks_candidate_lists_as_non_recruitment():
+    """测试拟录取/名单类标题在审核队列中标记为疑似非招聘"""
+    logger.info("测试审核队列名单类标题识别...")
+
+    try:
+        from crawler.core.review_queue import ReviewQueueConfig, build_review_candidates
+
+        now = datetime.now()
+        jobs = [
+            {
+                "title": "重庆医院2026年公开招聘工作人员拟录取人员名单",
+                "url": "https://example.com/notice/list",
+                "hospital": "重庆医院",
+                "source_site": "site_a",
+                "publish_date": (now - timedelta(days=1)).isoformat(),
+            },
+            {
+                "title": "重庆医院2026年公开招聘工作人员公告",
+                "url": "https://example.com/notice/job",
+                "hospital": "重庆医院",
+                "source_site": "site_a",
+                "publish_date": (now - timedelta(days=1)).isoformat(),
+            },
+        ]
+
+        candidates = build_review_candidates(
+            jobs,
+            {},
+            ReviewQueueConfig(recent_days=30),
+            recruitment_keywords=["招聘", "引进", "护士", "医师"],
+        )
+        by_url = {item.url: item for item in candidates}
+
+        assert by_url["https://example.com/notice/list"].non_recruitment_likely is True
+        assert by_url["https://example.com/notice/job"].non_recruitment_likely is False
+        logger.info("✓ 审核队列名单类标题识别正确")
+        return True
+
+    except Exception as e:
+        logger.error(f"审核队列名单类标题识别测试失败: {e}")
         return False
 
 

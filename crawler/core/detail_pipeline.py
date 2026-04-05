@@ -12,9 +12,10 @@ import zipfile
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
+from html import escape
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import unquote, urljoin, urlparse
+from urllib.parse import parse_qs, unquote, urljoin, urlparse
 from xml.etree import ElementTree as ET
 
 import aiohttp
@@ -23,6 +24,7 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 
 from crawler.core.crawler import (
     CrawlerConfig,
+    _decode_response_body,
     _looks_like_safeline_js_challenge,
     _looks_like_upstream_error_page,
     _looks_like_yunsuo_verify_page,
@@ -72,6 +74,21 @@ except Exception:  # pragma: no cover - optional dependency
 DEFAULT_DETAIL_RULES_PATH = "config/detail_rules.yaml"
 DEFAULT_DETAIL_OUTPUT_ROOT = "data/exports/details"
 DEFAULT_WECHAT_REVIEW_OUTPUT_ROOT = "data/exports/wechat_review"
+DEFAULT_CONTENT_SELECTORS = [
+    "#vsb_content_500 .v_news_content",
+    "[id^='vsb_content_'] .v_news_content",
+    "#vsb_content_500",
+    "[id^='vsb_content_']",
+    ".v_news_content",
+    ".TRS_Editor",
+    ".article-content",
+    ".news-content",
+    ".detail-content",
+    ".content-detail",
+    ".article-detail",
+    ".entry-content",
+    ".zhengwen",
+]
 DEFAULT_REMOVE_SELECTORS = [
     "script",
     "style",
@@ -109,6 +126,13 @@ TRAILING_NOISE_PATTERNS = (
     r"^返回顶部$",
     r"^浏览次数[:：]?\d*$",
 )
+ATTACHMENT_NAVIGATION_TITLES = (
+    "下载专区",
+    "下载中心",
+    "附件下载",
+    "相关下载",
+)
+HTML_NAVIGATION_EXTENSIONS = {".htm", ".html", ".shtml", ".jsp", ".php"}
 ATTACHMENT_EXTENSIONS = {
     ".pdf",
     ".doc",
@@ -479,6 +503,15 @@ class DetailPipeline:
             fetch_backend = str(fetch_result.get("fetch_backend") or "crawler")
             failure_category = str(fetch_result.get("failure_category") or "")
 
+        if self._looks_like_cqgwzx_detail_shell(content or "", url):
+            fallback_content, fallback_failure = await self._fetch_cqgwzx_detail_via_api(url, config)
+            if fallback_content:
+                content = fallback_content
+                fetch_backend = "cqgwzx_api"
+                failure_category = ""
+            elif not failure_category:
+                failure_category = fallback_failure or "cqgwzx_api_failed"
+
         if content and self._looks_like_blocked_page(content):
             fallback_content = await self._fetch_with_scrapling(url)
             if fallback_content:
@@ -487,6 +520,139 @@ class DetailPipeline:
                 failure_category = ""
 
         return content, fetch_backend, failure_category
+
+    @staticmethod
+    def _looks_like_cqgwzx_detail_shell(content: str, url: str) -> bool:
+        if not content or not url:
+            return False
+
+        parsed = urlparse(url)
+        query = parse_qs(parsed.query)
+        shell_markers = (
+            '<div id="app"></div>',
+            '/assets/index-',
+            '重庆市公共卫生医疗',
+        )
+        return (
+            parsed.netloc.lower().endswith("cqgwzx.com")
+            and parsed.path.rstrip("/") == "/article-detail"
+            and bool((query.get("id") or [None])[0])
+            and all(marker in content for marker in shell_markers)
+        )
+
+    @staticmethod
+    def _build_cqgwzx_api_headers(referer: str) -> Dict[str, str]:
+        parsed = urlparse(referer)
+        origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else "https://www.cqgwzx.com"
+        return {
+            "Accept": "application/json, text/plain, */*",
+            "Origin": origin,
+            "Referer": referer,
+            "fingerprint": "codex-crawler",
+        }
+
+    @staticmethod
+    def _resolve_cqgwzx_article_id(detail_url: str) -> Optional[str]:
+        article_id = (parse_qs(urlparse(detail_url).query).get("id") or [None])[0]
+        if article_id in (None, ""):
+            return None
+        return str(article_id)
+
+    async def _fetch_cqgwzx_detail_via_api(
+        self,
+        detail_url: str,
+        config: CrawlerConfig,
+    ) -> Tuple[Optional[str], str]:
+        article_id = self._resolve_cqgwzx_article_id(detail_url)
+        if not article_id:
+            return None, "cqgwzx_article_id_missing"
+
+        if not getattr(self.crawler, "session", None):
+            await self.crawler.init_session()
+
+        parsed = urlparse(detail_url)
+        api_url = f"{parsed.scheme}://{parsed.netloc}/prod-api/api/article/getArticleDetail"
+        header_builder = getattr(self.crawler, "_build_cqgwzx_api_headers", None)
+        headers = (
+            header_builder(detail_url)
+            if callable(header_builder)
+            else self._build_cqgwzx_api_headers(detail_url)
+        )
+
+        try:
+            async with self.crawler.session.get(
+                api_url,
+                params={"id": article_id},
+                headers=headers,
+                ssl=config.ssl_verify,
+            ) as response:
+                if response.status != 200:
+                    return None, f"cqgwzx_api_http_{response.status}"
+                body = await response.read()
+                content = _decode_response_body(body, response.charset)
+        except Exception as exc:
+            logger.warning("cqgwzx详情接口请求失败: %s", exc)
+            return None, "cqgwzx_api_request_failed"
+
+        try:
+            payload = json.loads(content)
+        except json.JSONDecodeError:
+            return None, "cqgwzx_api_invalid_json"
+
+        if payload.get("code") != 200:
+            return None, f"cqgwzx_api_code_{payload.get('code')}"
+
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            return None, "cqgwzx_api_missing_data"
+
+        return self._build_cqgwzx_detail_html(detail_url, data), ""
+
+    def _build_cqgwzx_detail_html(self, detail_url: str, data: Dict[str, Any]) -> str:
+        title = str(data.get("title") or "").strip()
+        publish_time = str(data.get("publishTime") or data.get("createTime") or "").strip()
+        content = str(data.get("content") or "").strip()
+        outer_link = str(data.get("outsideLink") or "").strip()
+
+        attachment_links = []
+        for index, item in enumerate(data.get("fileList") or [], start=1):
+            if not isinstance(item, dict):
+                continue
+            href = urljoin(
+                detail_url,
+                str(item.get("url") or item.get("fileUrl") or item.get("link") or "").strip(),
+            )
+            label = str(item.get("name") or item.get("title") or item.get("fileName") or f"附件{index}").strip()
+            if href:
+                attachment_links.append(f'<li><a href="{escape(href, quote=True)}">{escape(label)}</a></li>')
+
+        for index, item in enumerate(data.get("relationLinkVos") or [], start=1):
+            if not isinstance(item, dict):
+                continue
+            href = urljoin(detail_url, str(item.get("url") or item.get("link") or "").strip())
+            label = str(item.get("title") or item.get("name") or f"相关链接{index}").strip()
+            if href:
+                attachment_links.append(f'<li><a href="{escape(href, quote=True)}">{escape(label)}</a></li>')
+
+        sections = ["<html><body><article class=\"cqgwzx-api-article\">"]
+        if title:
+            sections.append(f"<h1>{escape(title)}</h1>")
+        if publish_time:
+            sections.append(f'<p class="publish-meta">发布时间：{escape(publish_time)}</p>')
+        sections.append(f'<div class="article-content">{content}</div>')
+        if outer_link:
+            safe_link = escape(urljoin(detail_url, outer_link), quote=True)
+            sections.append(
+                '<section class="related-links"><h2>原文链接</h2>'
+                f'<p><a href="{safe_link}">{safe_link}</a></p></section>'
+            )
+        if attachment_links:
+            sections.append(
+                '<section class="attachments"><h2>附件</h2><ul>'
+                f"{''.join(attachment_links)}</ul></section>"
+            )
+        sections.append("</article></body></html>")
+        return "".join(sections)
 
     @staticmethod
     def _looks_like_blocked_page(content: str) -> bool:
@@ -537,13 +703,14 @@ class DetailPipeline:
             extraction_order.extend(("readability", "selectors", "body"))
         else:
             extraction_order.extend(("selectors", "readability", "body"))
+        selector_candidates = list(dict.fromkeys(rule.content_selectors + DEFAULT_CONTENT_SELECTORS))
 
         chosen_html = ""
         extraction_method = "body"
 
         for method in extraction_order:
             if method == "selectors":
-                chosen_html = self._extract_with_selectors(raw_html, rule.content_selectors)
+                chosen_html = self._extract_with_selectors(raw_html, selector_candidates)
             elif method == "readability":
                 chosen_html = self._extract_with_readability(raw_html)
             else:
@@ -566,8 +733,8 @@ class DetailPipeline:
         if not selectors:
             return ""
         soup = BeautifulSoup(raw_html, "lxml")
-        matched = []
         for selector in selectors:
+            matched = []
             try:
                 nodes = soup.select(selector)
             except Exception:
@@ -576,7 +743,9 @@ class DetailPipeline:
                 html = str(node)
                 if _has_meaningful_text(html):
                     matched.append(html)
-        return "\n".join(matched)
+            if matched:
+                return "\n".join(matched)
+        return ""
 
     @staticmethod
     def _extract_with_readability(raw_html: str) -> str:
@@ -736,6 +905,8 @@ class DetailPipeline:
                 keyword in text for keyword in ATTACHMENT_HINT_KEYWORDS
             )
             if not is_attachment:
+                continue
+            if _should_skip_attachment_navigation_link(text, href, explicit=node in explicit_nodes):
                 continue
             seen_urls.add(href)
             attachments.append(
@@ -1427,6 +1598,25 @@ def _guess_extension(url: str) -> str:
         if ext.lstrip(".") in query:
             return ext
     return ""
+
+
+def _should_skip_attachment_navigation_link(title: str, href: str, *, explicit: bool = False) -> bool:
+    if explicit:
+        return False
+
+    normalized_title = re.sub(r"\s+", "", title or "")
+    if not normalized_title:
+        return False
+
+    extension = _guess_extension(href)
+    if extension not in HTML_NAVIGATION_EXTENSIONS:
+        return False
+
+    if any(keyword in normalized_title for keyword in ATTACHMENT_NAVIGATION_TITLES):
+        return True
+
+    parsed_path = urlparse(href).path.lower()
+    return "/xzzq" in parsed_path
 
 
 def _clean_title_text(value: str) -> str:

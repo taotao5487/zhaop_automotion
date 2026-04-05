@@ -1,0 +1,10 @@
+{
+  "db_path": "/Users/xiongtao/Documents/zhaop_automotion/data/jobs.db",
+  "generated_at": "2026-04-03T21:01:01.492423",
+  "counts": {
+    "keep": 1046,
+    "exclude": 1197,
+    "review": 184
+  },
+  "review_output": "/Users/xiongtao/Documents/zhaop_automotion/data/review_exports/recruitment_title_review_20260403_210101.csv"
+}

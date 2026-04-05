@@ -10,6 +10,9 @@ from typing import Any, Dict, List, Optional
 from aiohttp import web
 
 from crawler.core.database import db_manager
+from wechat_service.utils.recruitment_keyword_sets import (
+    POST_RECRUITMENT_EXCLUDE_KEYWORDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,24 +24,7 @@ DEFAULT_REVIEW_QUEUE_CONFIG = {
     "hide_old_without_keep": True,
 }
 
-DEFAULT_NON_RECRUITMENT_KEYWORDS = [
-    "成绩",
-    "公示",
-    "拟录用",
-    "拟聘",
-    "录取",
-    "体检",
-    "资格审查结果",
-    "资格复审结果",
-    "面试成绩",
-    "笔试成绩",
-    "总成绩",
-    "排名",
-    "入围",
-    "递补",
-    "补录名单",
-    "录用名单",
-]
+DEFAULT_NON_RECRUITMENT_KEYWORDS = list(POST_RECRUITMENT_EXCLUDE_KEYWORDS)
 
 
 @dataclass

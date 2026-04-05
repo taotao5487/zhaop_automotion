@@ -39,6 +39,16 @@ def test_filter_rejects_post_hiring_notice_title():
     assert article["filter_stage"] == "coarse_excluded"
 
 
+def test_filter_rejects_post_hiring_candidate_list_title():
+    article, matched = recruitment_filter.prepare_article(
+        _article("某医院2026年公开招聘工作人员拟录取人员名单")
+    )
+
+    assert matched is False
+    assert article["review_status"] == "rejected"
+    assert article["filter_stage"] == "coarse_excluded"
+
+
 def test_filter_rejects_non_job_recruitment_campaign_after_finalize():
     article, matched = recruitment_filter.prepare_article(
         _article("对白内障患者招募：50个名额，白内障手术免费做")

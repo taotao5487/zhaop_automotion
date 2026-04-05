@@ -5,6 +5,20 @@
 # 3. body 回退
 
 sites:
+  site_6_6:
+    content_selectors:
+      - "#vsb_content_500 .v_news_content"
+      - "[id^='vsb_content_'] .v_news_content"
+      - "#vsb_content_500"
+    remove_selectors:
+      - ".page-date"
+      - ".bdsharebuttonbox"
+      - ".fixed"
+      - ".con-banner"
+    attachment_selectors:
+      - "#vsb_content_500 a[href]"
+      - "[id^='vsb_content_'] a[href]"
+
   site_13_13:
     content_selectors:
       - ".newdet .newdet-det"

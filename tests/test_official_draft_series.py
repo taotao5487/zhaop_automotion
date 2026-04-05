@@ -162,6 +162,67 @@ def test_build_article_row_from_review_package_allows_other_attachments_without_
     assert 'href="https://example.com/download.html"' in row["content"]
 
 
+def test_build_article_row_from_review_package_allows_wechat_origin_without_attachment_backfill(tmp_path):
+    from wechat_service.utils.crawler_review_package_draft import (
+        build_article_row_from_review_package,
+    )
+
+    review_dir = tmp_path / "wechat_review" / "item_wechat_origin"
+    review_dir.mkdir(parents=True, exist_ok=True)
+
+    package = {
+        "title": "测试微信文章来源",
+        "source_url": "https://mp.weixin.qq.com/s/example-article",
+        "hospital": "测试医院",
+        "plain_text": "这里是正文摘要",
+        "content_html": "<article><p>正文</p></article>",
+        "images": [],
+        "attachments": [
+            {
+                "title": "岗位表",
+                "source_url": "https://example.com/job.xlsx",
+                "local_path": "assets/attachments/job.xlsx",
+                "render_status": "pending",
+                "rendered_images": [],
+                "category": "position_table",
+            }
+        ],
+    }
+    (review_dir / "package.json").write_text(
+        json.dumps(package, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    row = build_article_row_from_review_package(review_dir)
+
+    assert row["title"] == "测试微信文章来源"
+    assert row["link"] == "https://mp.weixin.qq.com/s/example-article"
+
+
+def test_build_article_row_from_review_package_rejects_title_only_content(tmp_path):
+    from wechat_service.utils import crawler_review_package_draft as review_module
+
+    review_dir = tmp_path / "wechat_review" / "item_title_only"
+    review_dir.mkdir(parents=True, exist_ok=True)
+
+    package = {
+        "title": "只有标题的公告",
+        "source_url": "https://example.com/title-only",
+        "hospital": "测试医院",
+        "plain_text": "只有标题的公告",
+        "content_html": "<article><header><h1>只有标题的公告</h1></header><section></section></article>",
+        "images": [],
+        "attachments": [],
+    }
+    (review_dir / "package.json").write_text(
+        json.dumps(package, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(review_module.OfficialWechatDraftError, match="正文为空"):
+        review_module.build_article_row_from_review_package(review_dir)
+
+
 def test_series_lease_can_be_acquired_released_and_reclaimed(temp_rss_db):
     assert rss_store.acquire_official_draft_series_lease(
         series_key="default",
@@ -1018,6 +1079,95 @@ def test_publish_latest_batch_processes_attachments_before_push(tmp_path, monkey
     assert upload_calls == ["review_a"]
     assert push_calls == [("review_a", False), ("review_b", False)]
     assert "using summary" in output
+
+
+def test_publish_latest_batch_skips_attachment_upload_for_wechat_origin_packages(tmp_path, monkeypatch, capsys):
+    summary_dir = tmp_path / "details" / "20260328_120000"
+    review_a = tmp_path / "wechat_review" / "batch_1" / "review_a"
+    review_b = tmp_path / "wechat_review" / "batch_1" / "review_b"
+    review_a.mkdir(parents=True)
+    review_b.mkdir(parents=True)
+
+    (review_a / "package.json").write_text(
+        json.dumps(
+            {
+                "title": "官网转微信文章",
+                "source_url": "https://mp.weixin.qq.com/s/example-article",
+                "content_html": "<article><p>正文</p></article>",
+                "attachments": [],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (review_b / "package.json").write_text(
+        json.dumps(
+            {
+                "title": "普通官网公告",
+                "source_url": "https://example.com/notice",
+                "content_html": "<article><p>正文</p></article>",
+                "attachments": [],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    summary_path = summary_dir / "summary.json"
+    summary_dir.mkdir(parents=True)
+    summary_path.write_text(
+        json.dumps(
+            {
+                "results": [
+                    {"review_dir": str(review_a)},
+                    {"review_dir": str(review_b)},
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    import publish_latest_wechat_batch as publish_module
+
+    upload_calls = []
+    push_calls = []
+
+    monkeypatch.setattr(
+        publish_module,
+        "find_latest_summary_path",
+        lambda root=None: summary_path,
+    )
+    monkeypatch.setattr(
+        publish_module,
+        "build_local_attachments_from_review_dir",
+        lambda review_dir: ["attachment"],
+    )
+
+    def fake_process_review_dir_attachments(review_dir, **kwargs):
+        upload_calls.append(Path(review_dir).name)
+        return {"failed_count": 0, "success_count": 1}
+
+    async def fake_push_review_package_to_shared_draft_series(review_dir, force=False):
+        push_calls.append((Path(review_dir).name, force))
+        return {"status": "pushed", "draft_media_id": "draft-1", "batch_index": 1}
+
+    monkeypatch.setattr(publish_module, "process_review_dir_attachments", fake_process_review_dir_attachments)
+    monkeypatch.setattr(
+        publish_module,
+        "push_review_package_to_shared_draft_series",
+        fake_push_review_package_to_shared_draft_series,
+    )
+
+    exit_code = publish_module.main([])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert upload_calls == ["review_b"]
+    assert push_calls == [("review_a", False), ("review_b", False)]
+    assert "skip_attachment_backfill=wechat_article_source" in output
 
 
 def test_publish_latest_batch_warns_when_explicit_summary_is_not_latest(tmp_path, monkeypatch, capsys):

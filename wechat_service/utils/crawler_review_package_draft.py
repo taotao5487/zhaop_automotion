@@ -4,6 +4,7 @@ import json
 from html import escape
 from pathlib import Path
 from typing import Any, Dict
+from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 
@@ -220,6 +221,28 @@ def _load_review_package(review_dir: Path) -> Dict[str, Any]:
     return json.loads(package_path.read_text(encoding="utf-8"))
 
 
+def is_wechat_article_url(url: str) -> bool:
+    parsed = urlparse(str(url or "").strip())
+    hostname = (parsed.hostname or "").lower()
+    return hostname == "mp.weixin.qq.com"
+
+
+def is_wechat_origin_package(package: Dict[str, Any]) -> bool:
+    return is_wechat_article_url(str(package.get("source_url") or ""))
+
+
+def review_dir_uses_wechat_article_source(review_dir: str | Path) -> bool:
+    package_path = Path(review_dir).expanduser().resolve() / "package.json"
+    if not package_path.exists():
+        return False
+
+    try:
+        package = json.loads(package_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    return is_wechat_origin_package(package)
+
+
 def _resolve_asset_path(review_dir: Path, raw_path: str) -> Path | None:
     candidate = (raw_path or "").strip()
     if not candidate:
@@ -234,6 +257,26 @@ def _resolve_asset_path(review_dir: Path, raw_path: str) -> Path | None:
     if path.exists():
         return path
     return None
+
+
+def _has_meaningful_review_body(content_html: str) -> bool:
+    soup = BeautifulSoup(content_html or "", "html.parser")
+    article = soup.find("article") or soup
+
+    for header in list(article.find_all("header")):
+        header.decompose()
+
+    for section in list(article.find_all("section")):
+        heading = section.find(["h1", "h2", "h3"])
+        heading_text = heading.get_text(" ", strip=True) if heading else ""
+        if heading_text in {"附件说明", "招聘岗位", "原文链接"}:
+            section.decompose()
+
+    text = article.get_text("\n", strip=True)
+    if text:
+        return True
+
+    return article.find(["img", "table", "figure", "ul", "ol"]) is not None
 
 
 def _rewrite_local_images(review_dir: Path, content_html: str) -> str:
@@ -355,6 +398,8 @@ def _validate_attachment_backfill(package: Dict[str, Any]) -> None:
     attachments = package.get("attachments") or []
     if not attachments:
         return
+    if is_wechat_origin_package(package):
+        return
 
     missing_titles = []
     for attachment in attachments:
@@ -416,6 +461,8 @@ def build_article_row_from_review_package(review_dir: str | Path) -> Dict[str, A
     content_html = str(package.get("content_html") or "").strip()
     if not content_html:
         raise OfficialWechatDraftError("review package 缺少 content_html，无法生成草稿")
+    if not _has_meaningful_review_body(content_html):
+        raise OfficialWechatDraftError("review package 正文为空，已阻止生成只有标题的草稿")
 
     plain_text = str(package.get("plain_text") or "").strip()
     if not plain_text:

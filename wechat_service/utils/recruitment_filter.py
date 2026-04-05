@@ -13,6 +13,9 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from shared.paths import CONFIG_DIR
+from wechat_service.utils.recruitment_keyword_sets import (
+    POST_RECRUITMENT_EXCLUDE_KEYWORDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,27 +61,10 @@ DEFAULT_RULES = {
         "寻找发光的你",
         "寻找发光的您",
     ],
-    "title_exclude": [
-        "公示",
-        "名单",
-        "体检",
-        "总成绩",
+    "title_exclude": list(POST_RECRUITMENT_EXCLUDE_KEYWORDS) + [
         "成绩",
-        "资格复审",
         "复审",
-        "拟聘用",
-        "拟录用",
-        "入围",
-        "入闱",
-        "进入面试",
         "面试相关事项",
-        "录取",
-        "患者",
-        "志愿者",
-        "筛查",
-        "公益",
-        "活动",
-        "考核公告",
     ],
     "content_include": [
         "招聘",

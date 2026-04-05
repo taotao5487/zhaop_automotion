@@ -25,6 +25,9 @@ from crawler.core.xzf_attachment_uploader import (
     XzfAttachmentUploader,
     build_local_attachments_from_review_dir,
 )
+from wechat_service.utils.crawler_review_package_draft import (
+    review_dir_uses_wechat_article_source,
+)
 
 
 logging.basicConfig(
@@ -305,6 +308,10 @@ async def _run(args: argparse.Namespace) -> int:
             print(f"error | {review_dir} | attachment_scan_failed={exc}")
             has_error = True
             continue
+
+        if attachments and review_dir_uses_wechat_article_source(review_dir):
+            print(f"attachments | {review_dir} | skip_attachment_backfill=wechat_article_source")
+            attachments = []
 
         if attachments and not args.skip_attachments:
             try:

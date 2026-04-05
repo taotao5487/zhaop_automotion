@@ -167,6 +167,8 @@ class WechatReviewBuilder:
             attachments=attachments,
             position_rendered_images=position_rendered_images,
         )
+        if not self._has_meaningful_body_content(content_html):
+            raise ValueError("正文为空，已阻止生成只有标题的待审包")
         plain_text = self._build_plain_text(content_html)
         review_flags = self._build_review_flags(image_decisions, attachments)
 
@@ -586,6 +588,24 @@ class WechatReviewBuilder:
             f"{attachment_section}"
             "</article>"
         )
+
+    def _has_meaningful_body_content(self, content_html: str) -> bool:
+        soup = BeautifulSoup(content_html or "", "lxml")
+        article = soup.find("article") or soup
+
+        for header in list(article.find_all("header")):
+            header.decompose()
+
+        for section in list(article.find_all("section")):
+            heading = section.find(["h1", "h2", "h3"])
+            heading_text = heading.get_text(" ", strip=True) if heading else ""
+            if heading_text in {"附件说明", "招聘岗位", "原文链接"}:
+                section.decompose()
+
+        text = article.get_text("\n", strip=True)
+        if text:
+            return True
+        return article.find(["img", "table", "figure", "ul", "ol"]) is not None
 
     def _serialize_clean_body(self, container: Tag) -> str:
         clone = BeautifulSoup(str(container), "lxml")
