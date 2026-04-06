@@ -37,6 +37,16 @@ def normalize_name(value):
     return value
 
 
+def run_async(coro):
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coro)
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
+
+
 def http_get_json(url, timeout=60):
     with request.urlopen(url, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8"))
@@ -130,7 +140,7 @@ def extract_article_info(html_text, params=None):
 
 
 async def extract_article_author(url):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     html = await loop.run_in_executor(None, fetch_page, url, 120)
     if is_verification_page(html):
         raise RuntimeError("当前环境触发微信验证，请先在浏览器中打开该文章完成验证后再重试")
@@ -171,6 +181,74 @@ def choose_account(nickname, accounts):
         return accounts[0]
 
     return None
+
+
+def normalize_search_queries(name):
+    normalized = (name or "").strip()
+    queries = []
+    for candidate in [
+        normalized,
+        re.sub(r"(订阅号|服务号|公众号)$", "", normalized).strip(),
+        re.sub(r"(医院订阅号|医院服务号)$", "医院", normalized).strip(),
+    ]:
+        if candidate and candidate not in queries:
+            queries.append(candidate)
+    return queries
+
+
+def collect_account_candidates(nickname, accounts):
+    nickname_norm = normalize_name(nickname)
+    candidates = []
+    seen = set()
+    for account in accounts:
+        fakeid = (account.get("fakeid") or "").strip()
+        if fakeid in seen:
+            continue
+        account_name = normalize_name(account.get("nickname", ""))
+        alias = normalize_name(account.get("alias", ""))
+        if nickname_norm and (
+            nickname_norm in account_name or
+            account_name in nickname_norm or
+            nickname_norm in alias or
+            alias in nickname_norm
+        ):
+            seen.add(fakeid)
+            candidates.append(account)
+    return candidates
+
+
+def search_best_account(base_url, nickname):
+    all_accounts = []
+    seen = set()
+    for query in normalize_search_queries(nickname):
+        for account in search_accounts(base_url, query):
+            fakeid = (account.get("fakeid") or "").strip()
+            if not fakeid or fakeid in seen:
+                continue
+            seen.add(fakeid)
+            all_accounts.append(account)
+
+    account = choose_account(nickname, all_accounts)
+    return account, all_accounts
+
+
+def print_account_candidates(extracted_name, accounts, max_candidates=8):
+    print("解析出的公众号名: {}".format(extracted_name or "-"))
+    if not accounts:
+        print("未搜索到可用候选，请换一篇该公众号文章再试。")
+        return
+    print("搜索到多个候选，请改用更明确的文章或手动按名字订阅：")
+    for index, item in enumerate(accounts[:max_candidates], start=1):
+        print(
+            "{}. {} | alias={} | fakeid={}".format(
+                index,
+                item.get("nickname", "") or "-",
+                item.get("alias", "") or "-",
+                item.get("fakeid", "") or "-",
+            )
+        )
+    if len(accounts) > max_candidates:
+        print("... 其余 {} 个候选未展示".format(len(accounts) - max_candidates))
 
 
 def get_subscriptions(base_url):
@@ -259,10 +337,10 @@ async def async_main(args):
         if not author:
             raise RuntimeError("无法从文章链接中提取公众号名称")
 
-        accounts = search_accounts(args.base_url, author)
-        account = choose_account(author, accounts)
+        account, accounts = search_best_account(args.base_url, author)
         if not account:
-            raise RuntimeError("未找到匹配公众号: {}".format(author))
+            print_account_candidates(author, collect_account_candidates(author, accounts) or accounts)
+            return 2
 
         subscribe_result = subscribe_account(args.base_url, account)
         subscribe_message = subscribe_result.get("message", "")
@@ -309,8 +387,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(async_main(args))
+    return run_async(async_main(args))
 
 
 if __name__ == "__main__":

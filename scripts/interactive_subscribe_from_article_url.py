@@ -47,8 +47,7 @@ def main():
         base_url=args.base_url,
         limit=args.limit,
     )
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(
+    return subscribe_and_poll_from_article_url.run_async(
         subscribe_and_poll_from_article_url.async_main(runner_args)
     )
 
