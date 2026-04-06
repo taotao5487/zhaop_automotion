@@ -1,41 +1,38 @@
 #!/usr/bin/env python3
 
-from __future__ import annotations
-
 import argparse
 import json
 import os
 import sys
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import httpx
+from dotenv import load_dotenv
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT_DIR = SCRIPT_DIR.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from shared.paths import ENV_FILE, load_root_env
-
 DEFAULT_SITE_URL = "http://127.0.0.1:5001"
 DEFAULT_TIMEOUT = 120.0
+ENV_FILE = ROOT_DIR / ".env"
 NO_ARTICLE_MARKERS = (
     "当前没有未推送到共享草稿串的 confirmed 招聘文章",
     "当前没有 confirmed 招聘文章可推送到共享草稿串",
 )
 
 
-@dataclass
 class PushOutcome:
-    kind: str
-    summary: str
-    payload: Dict[str, Any]
+    def __init__(self, kind, summary, payload):
+        self.kind = kind
+        self.summary = summary
+        self.payload = payload
 
 
-def classify_push_response(payload: Dict[str, Any]) -> PushOutcome:
+def classify_push_response(payload):
     success = bool(payload.get("success"))
     data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
     error = str(payload.get("error") or "").strip()
@@ -68,7 +65,7 @@ def classify_push_response(payload: Dict[str, Any]) -> PushOutcome:
     )
 
 
-def build_wecom_markdown_message(kind: str, data: Dict[str, Any], *, run_label: str) -> str:
+def build_wecom_markdown_message(kind, data, run_label):
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = [f"> 执行时间: {now_str}", f"> 触发批次: {run_label}"]
 
@@ -110,22 +107,23 @@ def build_wecom_markdown_message(kind: str, data: Dict[str, Any], *, run_label: 
     )
 
 
-def load_runtime_config() -> Dict[str, str]:
-    load_root_env(override=False)
+def load_runtime_config():
+    if ENV_FILE.exists():
+        load_dotenv(str(ENV_FILE), override=False)
     return {
         "site_url": (os.getenv("SITE_URL", DEFAULT_SITE_URL) or DEFAULT_SITE_URL).rstrip("/"),
         "webhook_url": (os.getenv("WEBHOOK_URL", "") or "").strip(),
     }
 
 
-def build_push_endpoint(site_url: str, *, limit: Optional[int] = None) -> str:
+def build_push_endpoint(site_url, limit=None):
     endpoint = f"{site_url}/api/recruitment/official-draft/series/push?all=true"
     if limit is not None:
         endpoint += f"&limit={int(limit)}"
     return endpoint
 
 
-def send_wecom_markdown(webhook_url: str, markdown_text: str, *, timeout: float = 10.0) -> bool:
+def send_wecom_markdown(webhook_url, markdown_text, timeout=10.0):
     if not webhook_url:
         return False
 
@@ -144,7 +142,7 @@ def send_wecom_markdown(webhook_url: str, markdown_text: str, *, timeout: float 
     return True
 
 
-def run_auto_push(*, site_url: str, webhook_url: str, limit: Optional[int], run_label: str) -> PushOutcome:
+def run_auto_push(site_url, webhook_url, limit, run_label):
     endpoint = build_push_endpoint(site_url, limit=limit)
 
     try:
@@ -152,7 +150,6 @@ def run_auto_push(*, site_url: str, webhook_url: str, limit: Optional[int], run_
         response.raise_for_status()
         payload = response.json()
     except httpx.HTTPStatusError as exc:
-        error_payload: Dict[str, Any]
         try:
             error_payload = exc.response.json()
         except Exception:
@@ -167,13 +164,12 @@ def run_auto_push(*, site_url: str, webhook_url: str, limit: Optional[int], run_
     else:
         outcome = classify_push_response(payload)
 
+    message_payload = dict(outcome.payload)
+    message_payload["summary"] = outcome.summary
     message = build_wecom_markdown_message(
         outcome.kind,
-        {
-            **outcome.payload,
-            "summary": outcome.summary,
-        },
-        run_label=run_label,
+        message_payload,
+        run_label,
     )
 
     try:
@@ -184,7 +180,7 @@ def run_auto_push(*, site_url: str, webhook_url: str, limit: Optional[int], run_
     return outcome
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args():
     parser = argparse.ArgumentParser(description="Auto-push recruitment articles into the shared WeChat draft series.")
     parser.add_argument("--site-url", default=None, help="Override SITE_URL from .env")
     parser.add_argument("--webhook-url", default=None, help="Override WEBHOOK_URL from .env")
@@ -193,7 +189,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> int:
+def main():
     args = parse_args()
     config = load_runtime_config()
     site_url = (args.site_url or config["site_url"]).rstrip("/")
