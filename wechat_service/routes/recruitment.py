@@ -82,11 +82,23 @@ async def export_recruitment_articles(
         pattern="^(full|title_url)$",
         description="导出视图: full 或 title_url",
     ),
+    recent_days: int = Query(
+        rss_store.get_recruitment_push_recent_days(),
+        ge=0,
+        le=365,
+        description="仅导出最近多少天内发布的文章；0 表示不按时间窗过滤",
+    ),
+    since_subscription: bool = Query(
+        rss_store.get_recruitment_push_since_subscription(),
+        description="是否只导出订阅创建时间之后发布的文章",
+    ),
 ):
     rows = rss_store.get_recruitment_articles(
         status=status,
         limit=limit,
         push_status=push_status,
+        recent_days=recent_days,
+        since_subscription=since_subscription,
     )
     normalized = [_normalize_article_row(row) for row in rows]
 
@@ -110,6 +122,8 @@ async def export_recruitment_articles(
             "status": status,
             "push_status": push_status,
             "profile": profile,
+            "recent_days": recent_days,
+            "since_subscription": since_subscription,
             "data": normalized,
         })
 

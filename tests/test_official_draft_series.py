@@ -795,8 +795,14 @@ async def test_recruitment_shared_series_all_pushes_all_unpushed_rows(monkeypatc
     list_calls = []
     pushed_urls = []
 
-    def fake_get_recruitment_articles(status="confirmed", limit=100, push_status="all"):
-        list_calls.append((status, limit, push_status))
+    def fake_get_recruitment_articles(
+        status="confirmed",
+        limit=100,
+        push_status="all",
+        recent_days=None,
+        since_subscription=False,
+    ):
+        list_calls.append((status, limit, push_status, recent_days, since_subscription))
         return rows
 
     async def fake_push_article_row_to_shared_draft_series(row, *, source_type, force, series_key):
@@ -866,7 +872,7 @@ async def test_recruitment_shared_series_all_pushes_all_unpushed_rows(monkeypatc
         limit=25,
     )
 
-    assert list_calls == [("confirmed", 25, "unpushed")]
+    assert list_calls == [("confirmed", 25, "unpushed", 7, True)]
     assert pushed_urls == [row["link"] for row in rows]
     assert result["mode"] == "batch"
     assert result["total_candidates"] == 10

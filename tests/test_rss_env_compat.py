@@ -20,6 +20,8 @@ def _reload_rss_poller(monkeypatch, **env: str):
         "RSS_POLL_BATCH_SIZE",
         "ARTICLES_PER_POLL",
         "RSS_FETCH_FULL_CONTENT",
+        "RECRUITMENT_PUSH_RECENT_DAYS",
+        "RECRUITMENT_PUSH_SINCE_SUBSCRIPTION",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -52,8 +54,14 @@ def test_rss_poller_prefers_new_scheduler_tick_env(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_rss_poller_fetches_full_content_for_title_confirmed_articles(monkeypatch):
-    module = _reload_rss_poller(monkeypatch, RSS_FETCH_FULL_CONTENT="true")
+    module = _reload_rss_poller(
+        monkeypatch,
+        RSS_FETCH_FULL_CONTENT="true",
+        RECRUITMENT_PUSH_RECENT_DAYS="30",
+        RECRUITMENT_PUSH_SINCE_SUBSCRIPTION="false",
+    )
     seen_links: list[str] = []
+    monkeypatch.setattr(module.time, "time", lambda: 1_711_000_000)
 
     async def fake_enrich(self, articles):
         seen_links.extend(article["link"] for article in articles)
@@ -75,16 +83,19 @@ async def test_rss_poller_fetches_full_content_for_title_confirmed_articles(monk
             "title": "标题已确认招聘",
             "link": "https://example.com/title-confirmed",
             "filter_stage": "title_confirmed",
+            "publish_time": 1_710_900_000,
         },
         {
             "title": "粗筛命中招聘",
             "link": "https://example.com/coarse-matched",
             "filter_stage": "coarse_matched",
+            "publish_time": 1_710_900_000,
         },
         {
             "title": "已排除文章",
             "link": "https://example.com/rejected",
             "filter_stage": "coarse_excluded",
+            "publish_time": 1_710_900_000,
         },
     ]
 
@@ -97,3 +108,54 @@ async def test_rss_poller_fetches_full_content_for_title_confirmed_articles(monk
     assert result[0]["content"] == "<p>正文</p>"
     assert result[1]["content"] == "<p>正文</p>"
     assert result[2].get("content", "") == ""
+
+
+@pytest.mark.asyncio
+async def test_rss_poller_skips_full_content_for_pre_subscription_articles(monkeypatch):
+    module = _reload_rss_poller(
+        monkeypatch,
+        RSS_FETCH_FULL_CONTENT="true",
+        RECRUITMENT_PUSH_RECENT_DAYS="30",
+        RECRUITMENT_PUSH_SINCE_SUBSCRIPTION="true",
+    )
+    seen_links: list[str] = []
+    monkeypatch.setattr(module.time, "time", lambda: 1_711_000_000)
+
+    async def fake_enrich(self, articles):
+        seen_links.extend(article["link"] for article in articles)
+        return [
+            {
+                **article,
+                "content": "<p>正文</p>",
+                "plain_content": "正文",
+                "images_json": "[]",
+            }
+            for article in articles
+        ]
+
+    monkeypatch.setattr(module.RSSPoller, "_enrich_articles_content", fake_enrich)
+
+    poller = module.RSSPoller()
+    articles = [
+        {
+            "title": "订阅前的历史招聘",
+            "link": "https://example.com/historical",
+            "filter_stage": "title_confirmed",
+            "publish_time": 1_709_900_000,
+        },
+        {
+            "title": "订阅后的招聘文章",
+            "link": "https://example.com/recent",
+            "filter_stage": "coarse_matched",
+            "publish_time": 1_710_900_000,
+        },
+    ]
+
+    result = await poller._fetch_candidate_content(
+        articles,
+        subscription_created_at=1_710_000_000,
+    )
+
+    assert seen_links == ["https://example.com/recent"]
+    assert result[0].get("content", "") == ""
+    assert result[1]["content"] == "<p>正文</p>"

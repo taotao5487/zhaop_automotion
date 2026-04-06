@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 from __future__ import annotations
-
 import sys
 from pathlib import Path
 
@@ -54,6 +53,48 @@ def _seed_blank_recruitment_article(fakeid: str, link: str) -> None:
     )
 
 
+def _set_subscription_created_at(fakeid: str, created_at: int) -> None:
+    conn = rss_store._get_conn()
+    try:
+        conn.execute(
+            "UPDATE subscriptions SET created_at=? WHERE fakeid=?",
+            (created_at, fakeid),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _seed_confirmed_recruitment_article(
+    fakeid: str,
+    link: str,
+    *,
+    title: str,
+    publish_time: int,
+) -> None:
+    rss_store.save_articles(
+        fakeid,
+        [
+            {
+                "aid": f"aid-{publish_time}",
+                "title": title,
+                "link": link,
+                "digest": "",
+                "cover": "",
+                "author": "",
+                "publish_time": publish_time,
+                "content": "",
+                "plain_content": "",
+                "images_json": "[]",
+                "is_recruitment": 1,
+                "review_status": "confirmed",
+                "matched_keywords": '["招聘"]',
+                "filter_stage": "title_confirmed",
+            }
+        ],
+    )
+
+
 def test_get_recruitment_articles_backfills_blank_cached_title_match(temp_rss_db):
     fakeid = "test-fakeid-1"
     link = "https://mp.weixin.qq.com/s/test-backfill-list"
@@ -80,3 +121,44 @@ def test_get_recruitment_article_by_link_backfills_blank_cached_title_match(temp
     assert row["review_status"] == "confirmed"
     assert row["filter_stage"] == "title_confirmed"
     assert row["is_recruitment"] == 1
+
+
+def test_get_recruitment_articles_filters_historical_and_stale_rows(temp_rss_db, monkeypatch):
+    fakeid = "test-fakeid-3"
+    rss_store.add_subscription(
+        fakeid=fakeid,
+        nickname="测试公众号",
+        alias="test-account",
+        head_img="",
+    )
+    _set_subscription_created_at(fakeid, 1_710_000_000)
+    monkeypatch.setattr(rss_store.time, "time", lambda: 1_711_000_000)
+
+    _seed_confirmed_recruitment_article(
+        fakeid,
+        "https://mp.weixin.qq.com/s/historical",
+        title="历史招聘文章",
+        publish_time=1_709_900_000,
+    )
+    _seed_confirmed_recruitment_article(
+        fakeid,
+        "https://mp.weixin.qq.com/s/stale",
+        title="订阅后但过期的招聘文章",
+        publish_time=1_710_400_000,
+    )
+    _seed_confirmed_recruitment_article(
+        fakeid,
+        "https://mp.weixin.qq.com/s/recent",
+        title="最近招聘文章",
+        publish_time=1_710_900_000,
+    )
+
+    rows = rss_store.get_recruitment_articles(
+        status="confirmed",
+        limit=10,
+        push_status="unpushed",
+        recent_days=3,
+        since_subscription=True,
+    )
+
+    assert [row["link"] for row in rows] == ["https://mp.weixin.qq.com/s/recent"]

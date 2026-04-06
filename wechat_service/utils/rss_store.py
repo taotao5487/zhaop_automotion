@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 _default_db = DATA_DIR / "rss.db"
 DB_PATH = Path(os.getenv("RSS_DB_PATH", str(_default_db)))
 DEFAULT_OFFICIAL_DRAFT_SERIES_KEY = "default"
+DEFAULT_RECRUITMENT_PUSH_RECENT_DAYS = 7
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -43,6 +44,19 @@ def _get_scheduler_values() -> tuple[int, int]:
     min_interval = int(os.getenv("RSS_MIN_ACCOUNT_POLL_INTERVAL", "43200"))
     jitter = int(os.getenv("RSS_POLL_JITTER_SECONDS", "1800"))
     return min_interval, jitter
+
+
+def get_recruitment_push_recent_days() -> int:
+    raw = (os.getenv("RECRUITMENT_PUSH_RECENT_DAYS", str(DEFAULT_RECRUITMENT_PUSH_RECENT_DAYS)) or "").strip()
+    try:
+        return max(int(raw), 0)
+    except ValueError:
+        return DEFAULT_RECRUITMENT_PUSH_RECENT_DAYS
+
+
+def get_recruitment_push_since_subscription() -> bool:
+    raw = (os.getenv("RECRUITMENT_PUSH_SINCE_SUBSCRIPTION", "true") or "").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
 
 
 def compute_initial_next_poll(now: Optional[int] = None) -> int:
@@ -529,6 +543,8 @@ def get_recruitment_articles(
     status: str = "confirmed",
     limit: int = 100,
     push_status: str = "all",
+    recent_days: Optional[int] = None,
+    since_subscription: bool = False,
 ) -> List[Dict]:
     conn = _get_conn()
     try:
@@ -545,6 +561,14 @@ def get_recruitment_articles(
             where_clauses.append("d.source_link IS NOT NULL")
         elif push_status == "unpushed":
             where_clauses.append("d.source_link IS NULL")
+
+        if since_subscription:
+            where_clauses.append("a.publish_time >= s.created_at")
+
+        if recent_days is not None and int(recent_days) > 0:
+            cutoff = int(time.time()) - int(recent_days) * 86400
+            where_clauses.append("a.publish_time >= ?")
+            params.append(cutoff)
 
         params.append(limit)
         where_clause = " AND ".join(where_clauses)

@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from typing import Dict, List, Optional
 
 import httpx
@@ -104,7 +105,10 @@ class RSSPoller:
             try:
                 articles = await self._fetch_article_list(fakeid, creds)
                 articles = self._prepare_articles_for_recruitment(articles)
-                articles = await self._fetch_candidate_content(articles)
+                articles = await self._fetch_candidate_content(
+                    articles,
+                    subscription_created_at=int(subscription.get("created_at", 0) or 0),
+                )
 
                 if articles:
                     new_count = rss_store.save_articles(fakeid, articles)
@@ -130,7 +134,36 @@ class RSSPoller:
             prepared.append(updated)
         return prepared
 
-    async def _fetch_candidate_content(self, articles: List[Dict]) -> List[Dict]:
+    def _is_push_eligible_article(
+        self,
+        article: Dict,
+        *,
+        subscription_created_at: int = 0,
+        now: Optional[int] = None,
+    ) -> bool:
+        publish_time = int(article.get("publish_time", 0) or 0)
+        if publish_time <= 0:
+            return False
+
+        if subscription_created_at and rss_store.get_recruitment_push_since_subscription():
+            if publish_time < int(subscription_created_at):
+                return False
+
+        recent_days = rss_store.get_recruitment_push_recent_days()
+        if recent_days > 0:
+            current_ts = int(time.time()) if now is None else int(now)
+            cutoff = current_ts - recent_days * 86400
+            if publish_time < cutoff:
+                return False
+
+        return True
+
+    async def _fetch_candidate_content(
+        self,
+        articles: List[Dict],
+        *,
+        subscription_created_at: int = 0,
+    ) -> List[Dict]:
         if not FETCH_FULL_CONTENT or not articles:
             return articles
 
@@ -138,6 +171,10 @@ class RSSPoller:
             article
             for article in articles
             if article.get("filter_stage") in {"coarse_matched", "title_confirmed"}
+            and self._is_push_eligible_article(
+                article,
+                subscription_created_at=subscription_created_at,
+            )
         ]
         if not candidates:
             return articles

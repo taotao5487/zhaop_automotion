@@ -486,6 +486,8 @@ def _extract_article_row(
         status="confirmed",
         limit=1,
         push_status="all" if force else "unpushed",
+        recent_days=rss_store.get_recruitment_push_recent_days(),
+        since_subscription=rss_store.get_recruitment_push_since_subscription(),
     )
     if not rows:
         if force:
@@ -1100,6 +1102,8 @@ async def push_recruitment_article_to_shared_draft_series(
             status="confirmed",
             limit=max_items,
             push_status="all" if force else "unpushed",
+            recent_days=rss_store.get_recruitment_push_recent_days(),
+            since_subscription=rss_store.get_recruitment_push_since_subscription(),
         )
         if not rows:
             if force:
@@ -1152,6 +1156,8 @@ async def push_recruitment_article_to_shared_draft_series(
             status="confirmed",
             limit=1,
             push_status="all" if force else "unpushed",
+            recent_days=rss_store.get_recruitment_push_recent_days(),
+            since_subscription=rss_store.get_recruitment_push_since_subscription(),
         )
         if not rows:
             if force:
