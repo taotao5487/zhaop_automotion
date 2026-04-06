@@ -2,27 +2,168 @@
 
 import argparse
 import asyncio
+import json
+import re
+import sqlite3
 import sys
+import time
 from pathlib import Path
+from urllib import parse, request
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from scripts.subscribe_and_poll_from_article_url import (
-    DEFAULT_BASE_URL,
-    DEFAULT_DB_PATH,
-    choose_account,
-    choose_subscription,
-    format_publish_time,
-    get_recent_articles,
-    get_subscriptions,
-    normalize_name,
-    priority_mark_subscription,
-    search_accounts,
-    subscribe_account,
-    trigger_poll,
-)
+DEFAULT_BASE_URL = "http://127.0.0.1:5001"
+DEFAULT_DB_PATH = ROOT_DIR / "data" / "rss.db"
+
+
+def normalize_name(value):
+    value = (value or "").strip()
+    value = re.sub(r"\s+", "", value)
+    value = value.replace("\u200b", "")
+    return value
+
+
+def http_get_json(url, timeout=60):
+    with request.urlopen(url, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def http_post_json(url, payload, timeout=60):
+    body = json.dumps(payload).encode("utf-8")
+    req = request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def search_accounts(base_url, nickname):
+    query = parse.quote(nickname)
+    url = "{}/api/public/searchbiz?query={}".format(base_url.rstrip("/"), query)
+    result = http_get_json(url)
+    if not result.get("success"):
+        raise RuntimeError(result.get("error") or "searchbiz failed")
+    return result.get("data", {}).get("list", []) or []
+
+
+def choose_account(nickname, accounts):
+    if not accounts:
+        return None
+
+    nickname_norm = normalize_name(nickname)
+    for account in accounts:
+        if normalize_name(account.get("nickname", "")) == nickname_norm:
+            return account
+
+    partial_matches = []
+    for account in accounts:
+        account_name = normalize_name(account.get("nickname", ""))
+        if nickname_norm and (nickname_norm in account_name or account_name in nickname_norm):
+            partial_matches.append(account)
+    if len(partial_matches) == 1:
+        return partial_matches[0]
+
+    if len(accounts) == 1:
+        return accounts[0]
+
+    return None
+
+
+def get_subscriptions(db_path):
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT fakeid, nickname, alias FROM subscriptions ORDER BY created_at DESC"
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def choose_subscription(target, subscriptions):
+    if not subscriptions:
+        return None
+
+    target_norm = normalize_name(target)
+
+    for sub in subscriptions:
+        if (sub.get("fakeid") or "").strip() == target.strip():
+            return sub
+
+    for sub in subscriptions:
+        nickname = normalize_name(sub.get("nickname", ""))
+        alias = normalize_name(sub.get("alias", ""))
+        if target_norm and (nickname == target_norm or alias == target_norm):
+            return sub
+
+    partial_matches = []
+    for sub in subscriptions:
+        nickname = normalize_name(sub.get("nickname", ""))
+        alias = normalize_name(sub.get("alias", ""))
+        if target_norm and (
+            target_norm in nickname or nickname in target_norm or
+            target_norm in alias or alias in target_norm
+        ):
+            partial_matches.append(sub)
+    if len(partial_matches) == 1:
+        return partial_matches[0]
+
+    if len(subscriptions) == 1:
+        return subscriptions[0]
+
+    return None
+
+
+def subscribe_account(base_url, account):
+    payload = {
+        "fakeid": account.get("fakeid", ""),
+        "nickname": account.get("nickname", ""),
+        "alias": account.get("alias", ""),
+        "head_img": account.get("round_head_img", ""),
+    }
+    return http_post_json("{}/api/rss/subscribe".format(base_url.rstrip("/")), payload)
+
+
+def priority_mark_subscription(fakeid, db_path):
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            "UPDATE subscriptions SET next_poll_at=? WHERE fakeid=?",
+            (1, fakeid),
+        )
+        conn.commit()
+        return conn.total_changes > 0
+    finally:
+        conn.close()
+
+
+def trigger_poll(base_url):
+    return http_post_json("{}/api/rss/poll".format(base_url.rstrip("/")), {})
+
+
+def get_recent_articles(fakeid, db_path, limit):
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT title, link, publish_time FROM articles WHERE fakeid=? ORDER BY publish_time DESC LIMIT ?",
+            (fakeid, limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def format_publish_time(timestamp):
+    if not timestamp:
+        return ""
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(timestamp)))
 
 
 def collect_subscription_candidates(target, subscriptions):
