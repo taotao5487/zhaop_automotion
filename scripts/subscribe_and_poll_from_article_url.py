@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import html
 import json
 import re
 import sqlite3
@@ -9,17 +10,26 @@ import sys
 import time
 from pathlib import Path
 from urllib import parse, request
+from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, urlparse
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from wechat_service.utils.helpers import extract_article_info, parse_article_url
-from wechat_service.utils.http_client import fetch_page
-
 
 DEFAULT_BASE_URL = "http://127.0.0.1:5001"
 DEFAULT_DB_PATH = ROOT_DIR / "data" / "rss.db"
+BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    "Referer": "https://mp.weixin.qq.com/",
+}
 
 
 def normalize_name(value):
@@ -46,12 +56,71 @@ def http_post_json(url, payload, timeout=60):
         return json.loads(resp.read().decode("utf-8"))
 
 
+def fetch_page(url, timeout=120):
+    req = request.Request(url, headers=BROWSER_HEADERS, method="GET")
+    try:
+        with request.urlopen(req, timeout=timeout) as resp:
+            charset = "utf-8"
+            if hasattr(resp.headers, "get_content_charset"):
+                charset = resp.headers.get_content_charset() or "utf-8"
+            return resp.read().decode(charset, errors="ignore")
+    except HTTPError as exc:
+        raise RuntimeError("fetch failed: HTTP {}".format(exc.code))
+    except URLError as exc:
+        raise RuntimeError("fetch failed: {}".format(exc.reason))
+
+
+def parse_article_url(url):
+    try:
+        if not url or "mp.weixin.qq.com/s" not in url:
+            return None
+        parsed = urlparse(str(url))
+        params = parse_qs(parsed.query)
+        __biz = params.get("__biz", [""])[0]
+        mid = params.get("mid", [""])[0]
+        idx = params.get("idx", [""])[0]
+        sn = params.get("sn", [""])[0]
+        if not all([__biz, mid, idx, sn]):
+            return None
+        return {"__biz": __biz, "mid": mid, "idx": idx, "sn": sn}
+    except Exception:
+        return None
+
+
+def _extract_first(pattern, text):
+    match = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
+def extract_article_info(html_text, params=None):
+    title = _extract_first(r'<meta\s+property="og:title"\s+content="([^"]+)"', html_text)
+    if not title:
+        title = _extract_first(r"var\s+msg_title\s*=\s*'([^']+)'", html_text)
+    if not title:
+        title = _extract_first(r"<title>([^<]+)</title>", html_text)
+
+    author = _extract_first(r'<meta\s+property="og:article:author"\s+content="([^"]+)"', html_text)
+    if not author:
+        author = _extract_first(r"var\s+nickname\s*=\s*htmlDecode\(\"([^\"]+)\"\)", html_text)
+    if not author:
+        author = _extract_first(r"var\s+nickname\s*=\s*'([^']+)'", html_text)
+    if not author:
+        author = _extract_first(r'var\s+user_name\s*=\s*"([^"]+)"', html_text)
+
+    title = html.unescape(title).strip()
+    author = html.unescape(author).strip()
+    return {
+        "title": title,
+        "author": author,
+        "__biz": params.get("__biz", "") if params else "",
+    }
+
+
 async def extract_article_author(url):
-    html = await fetch_page(
-        url,
-        extra_headers={"Referer": "https://mp.weixin.qq.com/"},
-        timeout=120,
-    )
+    loop = asyncio.get_event_loop()
+    html = await loop.run_in_executor(None, fetch_page, url, 120)
     params = parse_article_url(url)
     article = extract_article_info(html, params)
     author = (article.get("author") or "").strip()
