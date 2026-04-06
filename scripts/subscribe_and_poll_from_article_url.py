@@ -5,7 +5,6 @@ import asyncio
 import html
 import json
 import re
-import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -19,7 +18,6 @@ if str(ROOT_DIR) not in sys.path:
 
 
 DEFAULT_BASE_URL = "http://127.0.0.1:5001"
-DEFAULT_DB_PATH = ROOT_DIR / "data" / "rss.db"
 BROWSER_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -175,16 +173,11 @@ def choose_account(nickname, accounts):
     return None
 
 
-def get_subscriptions(db_path):
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    try:
-        rows = conn.execute(
-            "SELECT fakeid, nickname, alias FROM subscriptions ORDER BY created_at DESC"
-        ).fetchall()
-        return [dict(row) for row in rows]
-    finally:
-        conn.close()
+def get_subscriptions(base_url):
+    result = http_get_json("{}/api/rss/subscriptions".format(base_url.rstrip("/")))
+    if not result.get("success"):
+        raise RuntimeError(result.get("error") or "failed to fetch subscriptions")
+    return result.get("data", []) or []
 
 
 def choose_subscription(target, subscriptions):
@@ -231,34 +224,13 @@ def subscribe_account(base_url, account):
     return http_post_json("{}/api/rss/subscribe".format(base_url.rstrip("/")), payload)
 
 
-def priority_mark_subscription(fakeid, db_path):
-    conn = sqlite3.connect(str(db_path))
-    try:
-        conn.execute(
-            "UPDATE subscriptions SET next_poll_at=? WHERE fakeid=?",
-            (1, fakeid),
-        )
-        conn.commit()
-        return conn.total_changes > 0
-    finally:
-        conn.close()
-
-
-def trigger_poll(base_url):
-    return http_post_json("{}/api/rss/poll".format(base_url.rstrip("/")), {})
-
-
-def get_recent_articles(fakeid, db_path, limit):
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    try:
-        rows = conn.execute(
-            "SELECT title, link, publish_time FROM articles WHERE fakeid=? ORDER BY publish_time DESC LIMIT ?",
-            (fakeid, limit),
-        ).fetchall()
-        return [dict(row) for row in rows]
-    finally:
-        conn.close()
+def priority_poll_subscription(base_url, fakeid, limit):
+    url = "{}/api/rss/priority-poll/{}?limit={}".format(
+        base_url.rstrip("/"),
+        parse.quote(fakeid),
+        int(limit),
+    )
+    return http_post_json(url, {})
 
 
 def format_publish_time(timestamp):
@@ -274,7 +246,7 @@ async def async_main(args):
 
     if args.name or args.fakeid:
         target = args.fakeid or args.name
-        subscriptions = get_subscriptions(args.db_path)
+        subscriptions = get_subscriptions(args.base_url)
         account = choose_subscription(target, subscriptions)
         if not account:
             raise RuntimeError("未找到已订阅公众号: {}".format(target))
@@ -298,11 +270,10 @@ async def async_main(args):
         if not fakeid:
             raise RuntimeError("搜索结果中缺少 fakeid")
 
-    if not priority_mark_subscription(fakeid, args.db_path):
-        raise RuntimeError("未找到订阅记录，无法插队轮询: {}".format(fakeid))
-
-    poll_result = trigger_poll(args.base_url)
-    recent_articles = get_recent_articles(fakeid, args.db_path, args.limit)
+    poll_result = priority_poll_subscription(args.base_url, fakeid, args.limit)
+    if not poll_result.get("success"):
+        raise RuntimeError(poll_result.get("data", {}).get("message", "插队轮询失败"))
+    recent_articles = poll_result.get("data", {}).get("articles", []) or []
 
     if title:
         print("文章标题: {}".format(title))
@@ -329,7 +300,6 @@ def parse_args():
     parser.add_argument("--name", default=None, help="Already-subscribed account nickname or alias")
     parser.add_argument("--fakeid", default=None, help="Already-subscribed fakeid")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Local API base URL, default: http://127.0.0.1:5001")
-    parser.add_argument("--db-path", default=str(DEFAULT_DB_PATH), help="SQLite rss.db path")
     parser.add_argument("--limit", type=int, default=10, help="How many recent articles to print")
     args = parser.parse_args()
     if not args.article_url and not args.name and not args.fakeid:
@@ -339,7 +309,6 @@ def parse_args():
 
 def main():
     args = parse_args()
-    args.db_path = Path(args.db_path).expanduser().resolve()
     loop = asyncio.get_event_loop()
     return loop.run_until_complete(async_main(args))
 

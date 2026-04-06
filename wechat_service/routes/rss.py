@@ -159,6 +159,50 @@ async def trigger_poll():
         )
 
 
+@router.post("/rss/priority-poll/{fakeid}", response_model=PollerStatusResponse,
+             summary="将指定订阅插队并立即轮询")
+async def trigger_priority_poll(
+    fakeid: str,
+    limit: int = Query(10, ge=1, le=50, description="返回最新文章数量"),
+):
+    """
+    将某个订阅号插队到最前面，并立即触发一次轮询。
+    """
+    subscription = rss_store.get_subscription(fakeid)
+    if not subscription:
+        return PollerStatusResponse(
+            success=False,
+            data={"message": "未找到该订阅", "fakeid": fakeid},
+        )
+
+    if not rss_poller.is_running:
+        return PollerStatusResponse(
+            success=False,
+            data={"message": "轮询器未启动", "fakeid": fakeid},
+        )
+
+    try:
+        forced = rss_store.mark_subscription_priority(fakeid)
+        processed = await rss_poller.poll_now()
+        articles = rss_store.get_articles(fakeid, limit=limit)
+        return PollerStatusResponse(
+            success=True,
+            data={
+                "message": "插队轮询完成" if processed else "已插队，但当前没有处理到该订阅",
+                "fakeid": fakeid,
+                "nickname": subscription.get("nickname", ""),
+                "forced": forced,
+                "processed": processed,
+                "articles": articles,
+            }
+        )
+    except Exception as e:
+        return PollerStatusResponse(
+            success=False,
+            data={"message": f"插队轮询出错: {str(e)}", "fakeid": fakeid}
+        )
+
+
 @router.get("/rss/status", response_model=PollerStatusResponse,
             summary="轮询器状态")
 async def poller_status():

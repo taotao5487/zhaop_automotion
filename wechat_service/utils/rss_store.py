@@ -444,6 +444,20 @@ def update_last_poll(fakeid: str):
         conn.close()
 
 
+def mark_subscription_priority(fakeid: str, priority_at: Optional[int] = None) -> bool:
+    priority_at = int(priority_at if priority_at is not None else time.time())
+    conn = _get_conn()
+    try:
+        conn.execute(
+            "UPDATE subscriptions SET next_poll_at=? WHERE fakeid=?",
+            (-abs(priority_at), fakeid),
+        )
+        conn.commit()
+        return conn.total_changes > 0
+    finally:
+        conn.close()
+
+
 def save_articles(fakeid: str, articles: List[Dict]) -> int:
     conn = _get_conn()
     inserted = 0
