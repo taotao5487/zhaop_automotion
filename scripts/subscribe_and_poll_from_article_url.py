@@ -122,11 +122,18 @@ def extract_article_info(html_text, params=None):
     if not title:
         title = _extract_first(r"<title>([^<]+)</title>", html_text)
 
-    author = _extract_first(r'<meta\s+property="og:article:author"\s+content="([^"]+)"', html_text)
-    if not author:
-        author = _extract_first(r"var\s+nickname\s*=\s*htmlDecode\(\"([^\"]+)\"\)", html_text)
+    author = _extract_first(r"var\s+nickname\s*=\s*htmlDecode\(\"([^\"]+)\"\)", html_text)
     if not author:
         author = _extract_first(r"var\s+nickname\s*=\s*'([^']+)'", html_text)
+    if not author:
+        author = _extract_first(r"nick_name\s*:\s*JsDecode\('([^']+)'\)", html_text)
+    if not author:
+        author = _extract_first(
+            r'<a[^>]*id="js_name"[^>]*>\s*([^<]+?)\s*</a>',
+            html_text,
+        )
+    if not author:
+        author = _extract_first(r'<meta\s+property="og:article:author"\s+content="([^"]+)"', html_text)
     if not author:
         author = _extract_first(r'var\s+user_name\s*=\s*"([^"]+)"', html_text)
 
