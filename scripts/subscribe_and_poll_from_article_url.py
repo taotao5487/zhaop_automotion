@@ -87,6 +87,19 @@ def parse_article_url(url):
         return None
 
 
+def is_verification_page(html_text):
+    markers = [
+        "环境异常",
+        "完成验证后即可继续访问",
+        "secitptpage/verify",
+        "js_verify",
+    ]
+    for marker in markers:
+        if marker in html_text:
+            return True
+    return False
+
+
 def _extract_first(pattern, text):
     match = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
     if match:
@@ -121,6 +134,8 @@ def extract_article_info(html_text, params=None):
 async def extract_article_author(url):
     loop = asyncio.get_event_loop()
     html = await loop.run_in_executor(None, fetch_page, url, 120)
+    if is_verification_page(html):
+        raise RuntimeError("当前环境触发微信验证，请先在浏览器中打开该文章完成验证后再重试")
     params = parse_article_url(url)
     article = extract_article_info(html, params)
     author = (article.get("author") or "").strip()
@@ -156,6 +171,52 @@ def choose_account(nickname, accounts):
 
     if len(accounts) == 1:
         return accounts[0]
+
+    return None
+
+
+def get_subscriptions(db_path):
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT fakeid, nickname, alias FROM subscriptions ORDER BY created_at DESC"
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def choose_subscription(target, subscriptions):
+    if not subscriptions:
+        return None
+
+    target_norm = normalize_name(target)
+
+    for sub in subscriptions:
+        if (sub.get("fakeid") or "").strip() == target.strip():
+            return sub
+
+    for sub in subscriptions:
+        nickname = normalize_name(sub.get("nickname", ""))
+        alias = normalize_name(sub.get("alias", ""))
+        if target_norm and (nickname == target_norm or alias == target_norm):
+            return sub
+
+    partial_matches = []
+    for sub in subscriptions:
+        nickname = normalize_name(sub.get("nickname", ""))
+        alias = normalize_name(sub.get("alias", ""))
+        if target_norm and (
+            target_norm in nickname or nickname in target_norm or
+            target_norm in alias or alias in target_norm
+        ):
+            partial_matches.append(sub)
+    if len(partial_matches) == 1:
+        return partial_matches[0]
+
+    if len(subscriptions) == 1:
+        return subscriptions[0]
 
     return None
 
@@ -207,21 +268,35 @@ def format_publish_time(timestamp):
 
 
 async def async_main(args):
-    article = await extract_article_author(args.article_url)
-    author = (article.get("author") or "").strip()
-    title = (article.get("title") or "").strip()
-    if not author:
-        raise RuntimeError("无法从文章链接中提取公众号名称")
+    title = ""
+    author = ""
+    subscribe_message = "已订阅，直接插队轮询"
 
-    accounts = search_accounts(args.base_url, author)
-    account = choose_account(author, accounts)
-    if not account:
-        raise RuntimeError("未找到匹配公众号: {}".format(author))
+    if args.name or args.fakeid:
+        target = args.fakeid or args.name
+        subscriptions = get_subscriptions(args.db_path)
+        account = choose_subscription(target, subscriptions)
+        if not account:
+            raise RuntimeError("未找到已订阅公众号: {}".format(target))
+        fakeid = account.get("fakeid", "")
+        author = account.get("nickname", "")
+    else:
+        article = await extract_article_author(args.article_url)
+        author = (article.get("author") or "").strip()
+        title = (article.get("title") or "").strip()
+        if not author:
+            raise RuntimeError("无法从文章链接中提取公众号名称")
 
-    subscribe_result = subscribe_account(args.base_url, account)
-    fakeid = account.get("fakeid", "")
-    if not fakeid:
-        raise RuntimeError("搜索结果中缺少 fakeid")
+        accounts = search_accounts(args.base_url, author)
+        account = choose_account(author, accounts)
+        if not account:
+            raise RuntimeError("未找到匹配公众号: {}".format(author))
+
+        subscribe_result = subscribe_account(args.base_url, account)
+        subscribe_message = subscribe_result.get("message", "")
+        fakeid = account.get("fakeid", "")
+        if not fakeid:
+            raise RuntimeError("搜索结果中缺少 fakeid")
 
     if not priority_mark_subscription(fakeid, args.db_path):
         raise RuntimeError("未找到订阅记录，无法插队轮询: {}".format(fakeid))
@@ -229,10 +304,11 @@ async def async_main(args):
     poll_result = trigger_poll(args.base_url)
     recent_articles = get_recent_articles(fakeid, args.db_path, args.limit)
 
-    print("文章标题: {}".format(title or "未知标题"))
+    if title:
+        print("文章标题: {}".format(title))
     print("公众号名称: {}".format(author))
     print("匹配公众号: {} ({})".format(account.get("nickname", ""), fakeid))
-    print("订阅结果: {}".format(subscribe_result.get("message", "")))
+    print("订阅结果: {}".format(subscribe_message))
     print("轮询结果: {}".format(poll_result.get("data", {}).get("message", "")))
     print("")
     print("最新文章:")
@@ -249,11 +325,16 @@ async def async_main(args):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Subscribe a WeChat account from one article URL and priority-poll it once.")
-    parser.add_argument("article_url", help="WeChat article URL")
+    parser.add_argument("article_url", nargs="?", help="WeChat article URL")
+    parser.add_argument("--name", default=None, help="Already-subscribed account nickname or alias")
+    parser.add_argument("--fakeid", default=None, help="Already-subscribed fakeid")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Local API base URL, default: http://127.0.0.1:5001")
     parser.add_argument("--db-path", default=str(DEFAULT_DB_PATH), help="SQLite rss.db path")
     parser.add_argument("--limit", type=int, default=10, help="How many recent articles to print")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.article_url and not args.name and not args.fakeid:
+        parser.error("article_url 或 --name / --fakeid 至少提供一个")
+    return args
 
 
 def main():
