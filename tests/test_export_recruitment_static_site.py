@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -205,3 +206,40 @@ def test_main_prints_export_and_qr_paths(tmp_path: Path, monkeypatch, capsys):
     assert result == 0
     assert "Exported 2 recruitment item(s)" in captured.out
     assert "Copied QR asset" in captured.out
+
+
+def test_script_runs_directly_from_scripts_path(tmp_path: Path):
+    db_path = tmp_path / "rss.db"
+    _seed_articles(db_path)
+    output_dir = tmp_path / "site"
+    _write_site_shell(output_dir)
+    qr_source = tmp_path / "official_wx_card_qr.jpg"
+    qr_source.write_bytes(b"fake-image")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT_DIR / "scripts" / "export_recruitment_static_site.py"),
+            "--db-path",
+            str(db_path),
+            "--output-dir",
+            str(output_dir),
+            "--qr-source",
+            str(qr_source),
+        ],
+        cwd=ROOT_DIR,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "Exported 2 recruitment item(s)" in result.stdout
+
+
+def test_export_script_does_not_depend_on_shared_paths_for_cli_bootstrap():
+    script = (ROOT_DIR / "scripts" / "export_recruitment_static_site.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "from shared.paths import ROOT_DIR" not in script

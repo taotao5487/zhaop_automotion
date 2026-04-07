@@ -6,15 +6,18 @@ import argparse
 import json
 import shutil
 import sqlite3
+import sys
 from datetime import datetime
 from pathlib import Path
 
-from shared.paths import ROOT_DIR
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
-DEFAULT_DB_PATH = ROOT_DIR / "data" / "rss.db"
-DEFAULT_OUTPUT_DIR = ROOT_DIR / "site"
-DEFAULT_QR_SOURCE = ROOT_DIR / "static" / "official_wx_card_qr.jpg"
+DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "rss.db"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "site"
+DEFAULT_QR_SOURCE = PROJECT_ROOT / "static" / "official_wx_card_qr.jpg"
 
 
 def ensure_site_shell(output_dir: Path) -> None:
