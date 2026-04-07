@@ -15,6 +15,7 @@ logs/*
 !logs/.gitkeep
 
 data/exports/
+data/backups/
 data/browser_profiles/
 data/official_wx_preview/
 data/manual_exports/
