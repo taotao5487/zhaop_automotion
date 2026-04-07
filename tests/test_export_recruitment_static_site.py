@@ -19,6 +19,7 @@ if str(ROOT_DIR) not in sys.path:
 from scripts.export_recruitment_static_site import (  # noqa: E402
     export_static_site,
     main,
+    query_crawler_recruitment_items,
     query_recruitment_items,
 )
 
@@ -74,6 +75,101 @@ def _write_site_shell(output_dir: Path) -> None:
     (output_dir / "assets" / "site.js").write_text("console.log('ok')", encoding="utf-8")
 
 
+def _seed_crawler_jobs(db_path: Path) -> None:
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE medical_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title VARCHAR NOT NULL,
+            url VARCHAR NOT NULL UNIQUE,
+            publish_date DATETIME,
+            hospital VARCHAR,
+            location VARCHAR,
+            source_site VARCHAR,
+            crawl_time DATETIME,
+            is_new BOOLEAN
+        );
+        CREATE TABLE review_decisions (
+            url VARCHAR NOT NULL PRIMARY KEY,
+            decision VARCHAR NOT NULL,
+            decided_at DATETIME NOT NULL,
+            last_seen_at DATETIME NOT NULL,
+            source_site VARCHAR,
+            title_snapshot VARCHAR,
+            hospital_snapshot VARCHAR,
+            publish_date_snapshot DATETIME
+        );
+        """
+    )
+    jobs = [
+        (
+            "爬虫审核通过招聘公告",
+            "https://crawler.example.com/a",
+            "2026-04-05 09:30:00",
+            "测试医院",
+            "重庆",
+            "crawler_site",
+            "2026-04-05 10:00:00",
+            1,
+        ),
+        (
+            "缺少发布日期但审核通过",
+            "https://crawler.example.com/b",
+            None,
+            "",
+            "重庆",
+            "测试来源站",
+            "2026-04-04 08:00:00",
+            1,
+        ),
+        (
+            "被丢弃的爬虫公告",
+            "https://crawler.example.com/c",
+            "2026-04-05 09:30:00",
+            "测试医院",
+            "重庆",
+            "crawler_site",
+            "2026-04-05 10:00:00",
+            1,
+        ),
+        (
+            "超出时间窗的爬虫公告",
+            "https://crawler.example.com/d",
+            "2026-02-01 09:30:00",
+            "测试医院",
+            "重庆",
+            "crawler_site",
+            "2026-02-01 10:00:00",
+            1,
+        ),
+    ]
+    conn.executemany(
+        """
+        INSERT INTO medical_jobs
+            (title, url, publish_date, hospital, location, source_site, crawl_time, is_new)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        jobs,
+    )
+    decisions = [
+        ("https://crawler.example.com/a", "keep"),
+        ("https://crawler.example.com/b", "keep"),
+        ("https://crawler.example.com/c", "discard"),
+        ("https://crawler.example.com/d", "keep"),
+    ]
+    conn.executemany(
+        """
+        INSERT INTO review_decisions
+            (url, decision, decided_at, last_seen_at, source_site, title_snapshot, hospital_snapshot, publish_date_snapshot)
+        VALUES (?, ?, '2026-04-06 12:00:00', '2026-04-06 12:00:00', '', '', '', NULL)
+        """,
+        decisions,
+    )
+    conn.commit()
+    conn.close()
+
+
 def test_query_recruitment_items_filters_and_sorts(tmp_path: Path):
     db_path = tmp_path / "rss.db"
     now_ts = _seed_articles(db_path)
@@ -84,11 +180,29 @@ def test_query_recruitment_items_filters_and_sorts(tmp_path: Path):
     assert [item["publish_date"] for item in items] == ["2026-04-06", "2026-04-06"]
     assert [item["source_name"] for item in items] == ["测试医院公众号", "测试医院公众号"]
     assert all(item["url"].startswith("https://example.com/") for item in items)
+    assert all(item["source_type"] == "rss" for item in items)
+
+
+def test_query_crawler_recruitment_items_uses_kept_review_decisions(tmp_path: Path):
+    db_path = tmp_path / "jobs.db"
+    _seed_crawler_jobs(db_path)
+    now_ts = int(datetime(2026, 4, 6, 12, 0, tzinfo=timezone.utc).timestamp())
+
+    items = query_crawler_recruitment_items(db_path=db_path, days=30, now_ts=now_ts)
+
+    assert [item["title"] for item in items] == ["爬虫审核通过招聘公告", "缺少发布日期但审核通过"]
+    assert items[0]["source_name"] == "测试医院"
+    assert items[1]["source_name"] == "测试来源站"
+    assert items[0]["publish_date"] == "2026-04-05"
+    assert items[1]["publish_date"] == "2026-04-04"
+    assert all(item["source_type"] == "crawler" for item in items)
 
 
 def test_export_static_site_writes_payload_and_qr_copy(tmp_path: Path):
     db_path = tmp_path / "rss.db"
+    jobs_db_path = tmp_path / "jobs.db"
     now_ts = _seed_articles(db_path)
+    _seed_crawler_jobs(jobs_db_path)
     output_dir = tmp_path / "site"
     _write_site_shell(output_dir)
     qr_source = tmp_path / "official_wx_card_qr.jpg"
@@ -96,6 +210,7 @@ def test_export_static_site_writes_payload_and_qr_copy(tmp_path: Path):
 
     export_static_site(
         db_path=db_path,
+        jobs_db_path=jobs_db_path,
         output_dir=output_dir,
         qr_source=qr_source,
         days=30,
@@ -103,10 +218,14 @@ def test_export_static_site_writes_payload_and_qr_copy(tmp_path: Path):
     )
 
     payload = json.loads((output_dir / "recruitment.json").read_text(encoding="utf-8"))
-    assert payload["count"] == 2
+    assert payload["count"] == 4
     assert payload["items"][0]["title"] == "最新公开招聘公告"
     assert payload["items"][0]["source_name"] == "测试医院公众号"
-    assert payload["items"][1]["title"] == "人才引进公告"
+    crawler_item = next(
+        item for item in payload["items"] if item["title"] == "爬虫审核通过招聘公告"
+    )
+    assert crawler_item["source_name"] == "测试医院"
+    assert crawler_item["source_type"] == "crawler"
     assert payload["generated_at"].startswith("2026-04-06")
     assert (output_dir / "assets" / "official_wx_card_qr.jpg").read_bytes() == b"fake-image"
 
@@ -121,6 +240,7 @@ def test_export_static_site_requires_static_shell_files(tmp_path: Path):
     try:
         export_static_site(
             db_path=db_path,
+            jobs_db_path=tmp_path / "missing-jobs.db",
             output_dir=output_dir,
             qr_source=qr_source,
             days=30,
@@ -180,6 +300,7 @@ def test_export_static_site_returns_empty_payload_when_no_matches(tmp_path: Path
 
     payload = export_static_site(
         db_path=db_path,
+        jobs_db_path=tmp_path / "missing-jobs.db",
         output_dir=output_dir,
         qr_source=qr_source,
         days=30,
@@ -209,6 +330,8 @@ def test_main_prints_export_and_qr_paths(tmp_path: Path, monkeypatch, capsys):
             str(output_dir),
             "--qr-source",
             str(qr_source),
+            "--jobs-db-path",
+            str(tmp_path / "missing-jobs.db"),
             "--days",
             "30",
             "--now-ts",
@@ -242,6 +365,8 @@ def test_script_runs_directly_from_scripts_path(tmp_path: Path):
             str(output_dir),
             "--qr-source",
             str(qr_source),
+            "--jobs-db-path",
+            str(tmp_path / "missing-jobs.db"),
         ],
         cwd=ROOT_DIR,
         capture_output=True,
