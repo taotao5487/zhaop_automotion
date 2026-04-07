@@ -35,6 +35,53 @@ def test_classify_push_response_success():
     assert outcome.summary == "processed 3 article(s)"
 
 
+def test_classify_push_response_skipped_unavailable_is_not_failure():
+    payload = {
+        "success": True,
+        "data": {
+            "processed_count": 0,
+            "skipped_count": 1,
+            "failed_count": 0,
+            "status_counts": {"skipped_unavailable": 1},
+            "results": [
+                {
+                    "source_url": "https://example.com/deleted",
+                    "status": "skipped_unavailable",
+                    "error": "文章正文不可用: 已被发布者删除",
+                }
+            ],
+        },
+    }
+
+    outcome = classify_push_response(payload)
+
+    assert outcome.kind == "success"
+    assert outcome.summary == "skipped 1 unavailable article(s)"
+
+
+def test_classify_push_response_all_failures_stays_failure():
+    payload = {
+        "success": True,
+        "data": {
+            "processed_count": 0,
+            "skipped_count": 0,
+            "failed_count": 1,
+            "results": [
+                {
+                    "source_url": "https://example.com/broken",
+                    "status": "failed",
+                    "error": "推送共享草稿串失败: timeout",
+                }
+            ],
+        },
+    }
+
+    outcome = classify_push_response(payload)
+
+    assert outcome.kind == "failure"
+    assert "timeout" in outcome.summary
+
+
 def test_classify_push_response_no_articles_from_api_error():
     payload = {
         "success": False,
@@ -64,9 +111,11 @@ def test_build_wecom_markdown_message_for_success_contains_counts():
         "success",
         {
             "processed_count": 4,
+            "skipped_count": 1,
+            "failed_count": 0,
             "created_draft_count": 1,
             "draft_media_ids": ["draft-1"],
-            "status_counts": {"pushed": 1, "appended": 3},
+            "status_counts": {"pushed": 1, "appended": 3, "skipped_unavailable": 1},
         },
         run_label="10:00",
     )
@@ -75,6 +124,7 @@ def test_build_wecom_markdown_message_for_success_contains_counts():
     assert "10:00" in message
     assert "4" in message
     assert "draft-1" in message
+    assert "跳过" in message
 
 
 def test_build_wecom_markdown_message_for_no_articles_is_concise():

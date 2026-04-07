@@ -32,6 +32,19 @@ class PushOutcome:
         self.payload = payload
 
 
+def _first_result_error(data):
+    results = data.get("results") if isinstance(data, dict) else []
+    if not isinstance(results, list):
+        return ""
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        error = str(item.get("error") or "").strip()
+        if error:
+            return error
+    return ""
+
+
 def classify_push_response(payload):
     success = bool(payload.get("success"))
     data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
@@ -39,17 +52,32 @@ def classify_push_response(payload):
 
     if success:
         processed_count = int(data.get("processed_count", 0) or 0)
+        skipped_count = int(data.get("skipped_count", 0) or 0)
+        failed_count = int(data.get("failed_count", 0) or 0)
+        if processed_count > 0:
+            return PushOutcome(
+                kind="success",
+                summary=f"processed {processed_count} article(s)",
+                payload=data,
+            )
+        if skipped_count > 0 and failed_count <= 0:
+            return PushOutcome(
+                kind="success",
+                summary=f"skipped {skipped_count} unavailable article(s)",
+                payload=data,
+            )
+        if failed_count > 0:
+            return PushOutcome(
+                kind="failure",
+                summary=_first_result_error(data) or f"{failed_count} article(s) failed",
+                payload=data,
+            )
         if processed_count <= 0:
             return PushOutcome(
                 kind="no_articles",
                 summary="本次无可推送招聘文章",
                 payload=data,
             )
-        return PushOutcome(
-            kind="success",
-            summary=f"processed {processed_count} article(s)",
-            payload=data,
-        )
 
     if any(marker in error for marker in NO_ARTICLE_MARKERS):
         return PushOutcome(
@@ -71,21 +99,26 @@ def build_wecom_markdown_message(kind, data, run_label):
 
     if kind == "success":
         processed_count = int(data.get("processed_count", 0) or 0)
+        skipped_count = int(data.get("skipped_count", 0) or 0)
+        failed_count = int(data.get("failed_count", 0) or 0)
         created_draft_count = int(data.get("created_draft_count", 0) or 0)
         draft_media_ids = [str(item) for item in data.get("draft_media_ids", []) if str(item).strip()]
         status_counts = data.get("status_counts") or {}
         status_text = ", ".join(f"{key}={value}" for key, value in status_counts.items()) or "无"
 
-        return "\n".join(
-            [
-                "**自动推送成功**",
-                *lines,
-                f"> 推送篇数: {processed_count}",
-                f"> 新建草稿串数: {created_draft_count}",
-                f"> 草稿 media_id: {', '.join(draft_media_ids) if draft_media_ids else '无'}",
-                f"> 状态统计: {status_text}",
-            ]
-        )
+        message_lines = [
+            "**自动推送成功**",
+            *lines,
+            f"> 推送篇数: {processed_count}",
+            f"> 新建草稿串数: {created_draft_count}",
+            f"> 草稿 media_id: {', '.join(draft_media_ids) if draft_media_ids else '无'}",
+        ]
+        if skipped_count > 0:
+            message_lines.append(f"> 跳过失效文章: {skipped_count}")
+        if failed_count > 0:
+            message_lines.append(f"> 失败篇数: {failed_count}")
+        message_lines.append(f"> 状态统计: {status_text}")
+        return "\n".join(message_lines)
 
     if kind == "no_articles":
         summary = str(data.get("summary") or "本次无可推送招聘文章")

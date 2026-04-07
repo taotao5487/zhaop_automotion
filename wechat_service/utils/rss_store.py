@@ -29,6 +29,8 @@ _default_db = DATA_DIR / "rss.db"
 DB_PATH = Path(os.getenv("RSS_DB_PATH", str(_default_db)))
 DEFAULT_OFFICIAL_DRAFT_SERIES_KEY = "default"
 DEFAULT_RECRUITMENT_PUSH_RECENT_DAYS = 7
+SUCCESSFUL_OFFICIAL_DRAFT_STATUSES = ("pushed", "appended")
+TERMINAL_OFFICIAL_DRAFT_STATUSES = SUCCESSFUL_OFFICIAL_DRAFT_STATUSES + ("source_unavailable",)
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -572,9 +574,13 @@ def get_recruitment_articles(
             params = [status]
 
         if push_status == "pushed":
-            where_clauses.append("d.source_link IS NOT NULL")
+            placeholders = ",".join("?" for _ in SUCCESSFUL_OFFICIAL_DRAFT_STATUSES)
+            where_clauses.append(f"d.draft_status IN ({placeholders})")
+            params.extend(SUCCESSFUL_OFFICIAL_DRAFT_STATUSES)
         elif push_status == "unpushed":
-            where_clauses.append("d.source_link IS NULL")
+            placeholders = ",".join("?" for _ in TERMINAL_OFFICIAL_DRAFT_STATUSES)
+            where_clauses.append(f"(d.source_link IS NULL OR d.draft_status NOT IN ({placeholders}))")
+            params.extend(TERMINAL_OFFICIAL_DRAFT_STATUSES)
 
         if since_subscription:
             where_clauses.append("a.publish_time >= s.created_at")

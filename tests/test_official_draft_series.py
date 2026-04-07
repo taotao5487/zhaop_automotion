@@ -888,6 +888,85 @@ async def test_recruitment_shared_series_all_pushes_all_unpushed_rows(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_recruitment_shared_series_all_skips_unavailable_article_and_continues(monkeypatch):
+    import utils.official_wechat_draft as official_draft_module
+
+    rows = [
+        _make_row("https://example.com/deleted", title="已删除文章"),
+        _make_row("https://example.com/ok", title="正常文章"),
+    ]
+    saved_records = []
+
+    def fake_get_recruitment_articles(
+        status="confirmed",
+        limit=100,
+        push_status="all",
+        recent_days=None,
+        since_subscription=False,
+    ):
+        return rows
+
+    def fake_save_official_draft_record(record):
+        saved_records.append(record)
+
+    async def fake_push_article_row_to_shared_draft_series(row, *, source_type, force, series_key):
+        if row["link"] == "https://example.com/deleted":
+            raise official_draft_module.OfficialWechatDraftError("文章正文不可用: 已被发布者删除")
+        return {
+            "success": True,
+            "status": "pushed",
+            "append_mode": "draft/add",
+            "draft_media_id": "draft-1",
+            "article_count_before": 0,
+            "article_count_after": 1,
+            "batch_index": 1,
+            "source_url": row["link"],
+            "title": row["title"],
+        }
+
+    monkeypatch.setattr(
+        "utils.official_wechat_draft.rss_store.get_recruitment_articles",
+        fake_get_recruitment_articles,
+    )
+    monkeypatch.setattr(
+        "utils.official_wechat_draft.rss_store.save_official_draft_record",
+        fake_save_official_draft_record,
+    )
+    monkeypatch.setattr(
+        "utils.official_wechat_draft.push_article_row_to_shared_draft_series",
+        fake_push_article_row_to_shared_draft_series,
+    )
+
+    result = await push_recruitment_article_to_shared_draft_series(
+        force=False,
+        push_all=True,
+        limit=25,
+    )
+
+    assert result["processed_count"] == 1
+    assert result["skipped_count"] == 1
+    assert result["failed_count"] == 0
+    assert result["status_counts"] == {
+        "skipped_unavailable": 1,
+        "pushed": 1,
+    }
+    assert result["results"][0]["status"] == "skipped_unavailable"
+    assert result["results"][0]["error"] == "文章正文不可用: 已被发布者删除"
+    assert result["results"][1]["status"] == "pushed"
+    assert len(saved_records) == 1
+    saved = saved_records[0]
+    assert saved["source_link"] == "https://example.com/deleted"
+    assert saved["article_title"] == "已删除文章"
+    assert saved["source_type"] == "recruitment"
+    assert saved["draft_status"] == "source_unavailable"
+    assert saved["append_mode"] == "skip_unavailable"
+    assert saved["series_batch_index"] == 0
+    assert saved["skip_reason"] == "文章正文不可用: 已被发布者删除"
+    assert isinstance(saved["pushed_at"], int)
+    assert isinstance(saved["updated_at"], int)
+
+
+@pytest.mark.asyncio
 async def test_recruitment_shared_series_all_rejects_source_url(monkeypatch):
     import utils.official_wechat_draft as official_draft_module
 

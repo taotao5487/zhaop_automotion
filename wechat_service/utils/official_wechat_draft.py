@@ -51,6 +51,10 @@ class OfficialWechatDraftError(Exception):
     pass
 
 
+def _is_terminal_unavailable_error(exc: Exception) -> bool:
+    return str(exc).startswith("文章正文不可用:")
+
+
 def _load_official_env() -> None:
     global _OFFICIAL_ENV_LOADED
     if _OFFICIAL_ENV_LOADED:
@@ -522,6 +526,32 @@ def _save_push_record(
         "series_batch_index": int(series_batch_index or 0),
         "pushed_at": now,
         "updated_at": now,
+    })
+
+
+def _save_terminal_skip_record(
+    row: Dict,
+    *,
+    source_type: str,
+    draft_status: str,
+    append_mode: str,
+    skip_reason: str,
+):
+    now = int(time.time())
+    rss_store.save_official_draft_record({
+        "source_link": row.get("link", ""),
+        "article_title": row.get("title", ""),
+        "fakeid": row.get("fakeid", ""),
+        "review_status": row.get("review_status", ""),
+        "source_type": source_type,
+        "draft_status": draft_status,
+        "draft_media_id": "",
+        "previous_draft_media_id": "",
+        "append_mode": append_mode,
+        "series_batch_index": 0,
+        "pushed_at": now,
+        "updated_at": now,
+        "skip_reason": skip_reason,
     })
 
 
@@ -1116,14 +1146,60 @@ async def push_recruitment_article_to_shared_draft_series(
         results: List[Dict] = []
         draft_media_ids: List[str] = []
         status_counts: Dict[str, int] = {}
+        processed_count = 0
+        skipped_count = 0
+        failed_count = 0
 
         for row in rows:
-            result = await push_article_row_to_shared_draft_series(
-                row,
-                source_type="recruitment",
-                force=force,
-                series_key=series_key,
-            )
+            try:
+                result = await push_article_row_to_shared_draft_series(
+                    row,
+                    source_type="recruitment",
+                    force=force,
+                    series_key=series_key,
+                )
+            except OfficialWechatDraftError as exc:
+                error_message = str(exc)
+                status = "failed"
+                append_mode = ""
+                if _is_terminal_unavailable_error(exc):
+                    status = "skipped_unavailable"
+                    append_mode = "skip_unavailable"
+                    skipped_count += 1
+                    _save_terminal_skip_record(
+                        row,
+                        source_type="recruitment",
+                        draft_status="source_unavailable",
+                        append_mode=append_mode,
+                        skip_reason=error_message,
+                    )
+                else:
+                    failed_count += 1
+                results.append({
+                    "source_url": row.get("link", ""),
+                    "title": row.get("title", ""),
+                    "status": status,
+                    "append_mode": append_mode,
+                    "draft_media_id": "",
+                    "batch_index": 0,
+                    "error": error_message,
+                })
+                status_counts[status] = status_counts.get(status, 0) + 1
+                continue
+            except Exception as exc:
+                failed_count += 1
+                results.append({
+                    "source_url": row.get("link", ""),
+                    "title": row.get("title", ""),
+                    "status": "failed",
+                    "append_mode": "",
+                    "draft_media_id": "",
+                    "batch_index": 0,
+                    "error": str(exc),
+                })
+                status_counts["failed"] = status_counts.get("failed", 0) + 1
+                continue
+
             results.append({
                 "source_url": result.get("source_url", row.get("link", "")),
                 "title": result.get("title", row.get("title", "")),
@@ -1133,6 +1209,7 @@ async def push_recruitment_article_to_shared_draft_series(
                 "batch_index": int(result.get("batch_index", 0) or 0),
             })
 
+            processed_count += 1
             status = str(result.get("status", "") or "")
             if status:
                 status_counts[status] = status_counts.get(status, 0) + 1
@@ -1145,7 +1222,9 @@ async def push_recruitment_article_to_shared_draft_series(
             "success": True,
             "mode": "batch",
             "total_candidates": len(rows),
-            "processed_count": len(results),
+            "processed_count": processed_count,
+            "skipped_count": skipped_count,
+            "failed_count": failed_count,
             "created_draft_count": len(draft_media_ids),
             "draft_media_ids": draft_media_ids,
             "status_counts": status_counts,
