@@ -17,6 +17,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from scripts.export_recruitment_static_site import (  # noqa: E402
     export_static_site,
+    main,
     query_recruitment_items,
 )
 
@@ -134,3 +135,73 @@ def test_static_shell_files_include_mobile_and_modal_hooks():
     assert "pendingUrl" in js
     assert "@media (min-width: 768px)" in css
     assert "min-height: 48px;" in css
+
+
+def test_export_static_site_returns_empty_payload_when_no_matches(tmp_path: Path):
+    db_path = tmp_path / "rss.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fakeid TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            link TEXT NOT NULL DEFAULT '',
+            publish_time INTEGER NOT NULL DEFAULT 0,
+            is_recruitment INTEGER NOT NULL DEFAULT 0,
+            review_status TEXT NOT NULL DEFAULT ''
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    output_dir = tmp_path / "site"
+    _write_site_shell(output_dir)
+    qr_source = tmp_path / "official_wx_card_qr.jpg"
+    qr_source.write_bytes(b"fake-image")
+
+    payload = export_static_site(
+        db_path=db_path,
+        output_dir=output_dir,
+        qr_source=qr_source,
+        days=30,
+        now_ts=int(datetime(2026, 4, 6, 12, 0, tzinfo=timezone.utc).timestamp()),
+    )
+
+    assert payload["count"] == 0
+    assert payload["items"] == []
+
+
+def test_main_prints_export_and_qr_paths(tmp_path: Path, monkeypatch, capsys):
+    db_path = tmp_path / "rss.db"
+    now_ts = _seed_articles(db_path)
+    output_dir = tmp_path / "site"
+    _write_site_shell(output_dir)
+    qr_source = tmp_path / "official_wx_card_qr.jpg"
+    qr_source.write_bytes(b"fake-image")
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "export_recruitment_static_site.py",
+            "--db-path",
+            str(db_path),
+            "--output-dir",
+            str(output_dir),
+            "--qr-source",
+            str(qr_source),
+            "--days",
+            "30",
+            "--now-ts",
+            str(now_ts),
+        ],
+    )
+
+    result = main()
+
+    captured = capsys.readouterr()
+    assert result == 0
+    assert "Exported 2 recruitment item(s)" in captured.out
+    assert "Copied QR asset" in captured.out

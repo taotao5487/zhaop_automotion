@@ -104,6 +104,7 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--qr-source", type=Path, default=DEFAULT_QR_SOURCE)
     parser.add_argument("--days", type=int, default=30)
+    parser.add_argument("--now-ts", type=int, default=None, help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     payload = export_static_site(
@@ -111,11 +112,13 @@ def main() -> int:
         output_dir=args.output_dir,
         qr_source=args.qr_source,
         days=args.days,
+        now_ts=args.now_ts,
     )
     print(
         f"Exported {payload['count']} recruitment item(s) to "
         f"{args.output_dir / 'recruitment.json'}"
     )
+    print(f"Copied QR asset to {args.output_dir / 'assets' / 'official_wx_card_qr.jpg'}")
     return 0
 
 
