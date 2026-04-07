@@ -1,0 +1,234 @@
+:root {
+  --bg: #f7f2e8;
+  --panel: #fffdf8;
+  --panel-strong: #fff;
+  --border: #eadfcd;
+  --text: #221d16;
+  --muted: #6f6558;
+  --accent: #8e2f24;
+  --accent-strong: #6f2219;
+  --success: #245b48;
+  --shadow: 0 18px 50px rgba(34, 29, 22, 0.12);
+  --radius: 20px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: linear-gradient(180deg, #fbf7ef 0%, #f4ede2 100%);
+  color: var(--text);
+}
+
+.page-shell {
+  width: min(100%, 720px);
+  margin: 0 auto;
+  padding: 20px 16px 48px;
+}
+
+.hero,
+.search-panel,
+.job-card,
+.modal-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.hero,
+.search-panel {
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.eyebrow,
+.modal-eyebrow,
+.search-label,
+.result-meta,
+.job-date {
+  color: var(--muted);
+}
+
+.eyebrow,
+.modal-eyebrow {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0 0 10px;
+  font-size: 30px;
+  line-height: 1.2;
+}
+
+.hero-copy,
+.modal-copy {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.search-row {
+  display: grid;
+  gap: 10px;
+}
+
+input,
+button {
+  font: inherit;
+}
+
+#searchInput,
+#searchButton,
+.read-button,
+.primary-action,
+.secondary-action,
+.modal-close {
+  min-height: 48px;
+}
+
+#searchInput {
+  width: 100%;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #fff;
+}
+
+#searchButton,
+.read-button,
+.primary-action,
+.secondary-action {
+  border: 0;
+  border-radius: 16px;
+  padding: 0 18px;
+  cursor: pointer;
+}
+
+#searchButton,
+.read-button {
+  background: var(--accent);
+  color: #fff;
+}
+
+.primary-action {
+  background: var(--success);
+  color: #fff;
+}
+
+.secondary-action {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
+
+.results-list {
+  display: grid;
+  gap: 14px;
+}
+
+.job-card {
+  padding: 18px;
+}
+
+.job-title {
+  margin: 0 0 8px;
+  font-size: 20px;
+  line-height: 1.5;
+}
+
+.job-date {
+  margin: 0 0 14px;
+}
+
+.read-button {
+  width: 100%;
+}
+
+.empty-state {
+  padding: 22px 18px;
+  text-align: center;
+  color: var(--muted);
+  background: rgba(255, 253, 248, 0.8);
+  border-radius: 16px;
+  margin-bottom: 14px;
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(22, 18, 14, 0.72);
+}
+
+.modal-panel {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  padding: 18px;
+  background: #241b15;
+  color: #fff7ed;
+}
+
+.modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 48px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.modal-qr {
+  width: 100%;
+  max-width: 280px;
+  display: block;
+  margin: 14px auto;
+  border-radius: 18px;
+}
+
+.modal-actions {
+  display: grid;
+  gap: 10px;
+}
+
+@media (min-width: 768px) {
+  .page-shell {
+    width: min(100%, 960px);
+    padding: 40px 24px 72px;
+  }
+
+  .search-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  #searchButton {
+    min-width: 120px;
+  }
+
+  .modal-panel {
+    top: 50%;
+    bottom: auto;
+    left: 50%;
+    right: auto;
+    width: min(520px, calc(100vw - 48px));
+    transform: translate(-50%, -50%);
+  }
+}

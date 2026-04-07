@@ -97,3 +97,40 @@ def test_export_static_site_writes_payload_and_qr_copy(tmp_path: Path):
     assert payload["items"][1]["title"] == "人才引进公告"
     assert payload["generated_at"].startswith("2026-04-06")
     assert (output_dir / "assets" / "official_wx_card_qr.jpg").read_bytes() == b"fake-image"
+
+
+def test_export_static_site_requires_static_shell_files(tmp_path: Path):
+    db_path = tmp_path / "rss.db"
+    now_ts = _seed_articles(db_path)
+    output_dir = tmp_path / "site"
+    qr_source = tmp_path / "official_wx_card_qr.jpg"
+    qr_source.write_bytes(b"fake-image")
+
+    try:
+        export_static_site(
+            db_path=db_path,
+            output_dir=output_dir,
+            qr_source=qr_source,
+            days=30,
+            now_ts=now_ts,
+        )
+    except FileNotFoundError as exc:
+        assert "site shell" in str(exc)
+    else:
+        raise AssertionError("expected export_static_site to reject missing shell files")
+
+
+def test_static_shell_files_include_mobile_and_modal_hooks():
+    root = ROOT_DIR
+    html = (root / "site" / "index.html").read_text(encoding="utf-8")
+    css = (root / "site" / "assets" / "site.css").read_text(encoding="utf-8")
+    js = (root / "site" / "assets" / "site.js").read_text(encoding="utf-8")
+
+    assert 'id="searchInput"' in html
+    assert 'id="resultsList"' in html
+    assert 'id="readOriginalModal"' in html
+    assert 'id="continueButton"' in html
+    assert "fetch('./recruitment.json')" in js
+    assert "pendingUrl" in js
+    assert "@media (min-width: 768px)" in css
+    assert "min-height: 48px;" in css

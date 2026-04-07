@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>招聘公告</title>
+  <link rel="stylesheet" href="./assets/site.css">
+</head>
+<body>
+  <main class="page-shell">
+    <header class="hero">
+      <p class="eyebrow">Recruitment Digest</p>
+      <h1>最新招聘公告</h1>
+      <p class="hero-copy">展示最近 30 天已确认招聘公告，点击阅读原文前会先提示关注公众号。</p>
+    </header>
+
+    <section class="search-panel" aria-label="搜索招聘标题">
+      <label class="search-label" for="searchInput">关键词搜索</label>
+      <div class="search-row">
+        <input id="searchInput" type="search" placeholder="输入职位、医院、人才引进等关键词">
+        <button id="searchButton" type="button">搜索</button>
+      </div>
+      <p id="resultMeta" class="result-meta">正在加载招聘公告...</p>
+    </section>
+
+    <section aria-label="招聘公告列表">
+      <div id="emptyState" class="empty-state" hidden>没有找到匹配的招聘公告。</div>
+      <div id="resultsList" class="results-list"></div>
+    </section>
+  </main>
+
+  <div id="readOriginalModal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-modal="true"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <button id="closeModalButton" class="modal-close" type="button" aria-label="关闭弹层">×</button>
+      <p class="modal-eyebrow">继续查看前</p>
+      <h2 id="modalTitle">请先关注公众号</h2>
+      <img class="modal-qr" src="./assets/official_wx_card_qr.jpg" alt="公众号二维码">
+      <p class="modal-copy">扫码关注后，再点击下面的按钮继续查看原始招聘公告。</p>
+      <div class="modal-actions">
+        <button id="continueButton" class="primary-action" type="button">我已关注，继续查看</button>
+        <button id="cancelButton" class="secondary-action" type="button">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <template id="jobCardTemplate">
+    <article class="job-card">
+      <h2 class="job-title"></h2>
+      <p class="job-date"></p>
+      <button class="read-button" type="button">阅读原文</button>
+    </article>
+  </template>
+
+  <script src="./assets/site.js" defer></script>
+</body>
+</html>

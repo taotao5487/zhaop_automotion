@@ -17,6 +17,19 @@ DEFAULT_OUTPUT_DIR = ROOT_DIR / "site"
 DEFAULT_QR_SOURCE = ROOT_DIR / "static" / "official_wx_card_qr.jpg"
 
 
+def ensure_site_shell(output_dir: Path) -> None:
+    required = (
+        output_dir / "index.html",
+        output_dir / "assets" / "site.css",
+        output_dir / "assets" / "site.js",
+    )
+    missing = [str(path) for path in required if not path.exists()]
+    if missing:
+        raise FileNotFoundError(
+            "site shell is incomplete: missing " + ", ".join(missing)
+        )
+
+
 def query_recruitment_items(
     *,
     db_path: Path,
@@ -65,6 +78,7 @@ def export_static_site(
     days: int,
     now_ts: int | None = None,
 ) -> dict:
+    ensure_site_shell(output_dir)
     items = query_recruitment_items(db_path=db_path, days=days, now_ts=now_ts)
     export_time = datetime.fromtimestamp(now_ts) if now_ts is not None else datetime.now()
 
