@@ -7,6 +7,7 @@ const state = {
 const searchInput = document.getElementById("searchInput");
 const searchButton = document.getElementById("searchButton");
 const resultMeta = document.getElementById("resultMeta");
+const updateTime = document.getElementById("updateTime");
 const resultsList = document.getElementById("resultsList");
 const emptyState = document.getElementById("emptyState");
 const template = document.getElementById("jobCardTemplate");
@@ -64,10 +65,14 @@ function closeModal() {
 
 async function loadItems() {
   resultMeta.textContent = "正在加载招聘公告...";
+  updateTime.textContent = "更新时间：正在加载...";
   const response = await fetch('./recruitment.json');
   const payload = await response.json();
   state.items = payload.items || [];
   state.filteredItems = [...state.items];
+  updateTime.textContent = payload.generated_at
+    ? `更新时间：${payload.generated_at}`
+    : "更新时间：暂无";
   render(state.filteredItems);
 }
 
@@ -90,4 +95,5 @@ modal.addEventListener("click", (event) => {
 loadItems().catch(() => {
   emptyState.hidden = false;
   resultMeta.textContent = "加载招聘公告失败，请重新生成站点数据。";
+  updateTime.textContent = "更新时间：加载失败";
 });
