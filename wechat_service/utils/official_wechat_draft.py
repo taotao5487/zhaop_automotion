@@ -214,8 +214,11 @@ def _prepare_upload_image(
     try:
         image = Image.open(io.BytesIO(content))
         image.load()
-    except Exception as exc:
-        raise OfficialWechatDraftError(f"图片解析失败，无法上传: {source_url} ({exc})") from exc
+    except Exception:
+        suffix = _guess_suffix(source_url, content_type)
+        mime_type = (content_type or "").split(";", 1)[0].strip() or "image/jpeg"
+        logger.warning("图片无法被 PIL 解析，按原始格式透传: %s", source_url)
+        return content, mime_type, suffix
 
     has_alpha = image.mode in ("RGBA", "LA") or (
         image.mode == "P" and "transparency" in image.info
