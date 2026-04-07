@@ -46,12 +46,21 @@ class PublishOutcome:
     summary: str
 
 
-def _existing_default_data_path(filename: str) -> Path:
-    project_path = PROJECT_ROOT / "data" / filename
+def existing_default_data_path(
+    filename: str,
+    *,
+    project_root: Path = PROJECT_ROOT,
+    home: Path = Path.home(),
+) -> Path:
+    project_path = project_root / "data" / filename
+    primary_workspace_path = home / "Documents" / "zhaop_automotion" / "data" / filename
+
+    if ".worktrees" in project_root.parts and primary_workspace_path.exists():
+        return primary_workspace_path
+
     if project_path.exists():
         return project_path
 
-    primary_workspace_path = Path.home() / "Documents" / "zhaop_automotion" / "data" / filename
     if primary_workspace_path.exists():
         return primary_workspace_path
 
@@ -193,8 +202,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-dir", type=Path, default=DEFAULT_TARGET_DIR)
     parser.add_argument("--project-root", type=Path, default=PROJECT_ROOT)
     parser.add_argument("--site-dir", type=Path, default=DEFAULT_SITE_DIR)
-    parser.add_argument("--db-path", type=Path, default=_existing_default_data_path("rss.db"))
-    parser.add_argument("--jobs-db-path", type=Path, default=_existing_default_data_path("jobs.db"))
+    parser.add_argument("--db-path", type=Path, default=existing_default_data_path("rss.db"))
+    parser.add_argument("--jobs-db-path", type=Path, default=existing_default_data_path("jobs.db"))
     parser.add_argument("--branch", default=None, help="Optional publish branch; omit to use the repo's current branch.")
     parser.add_argument("--days", type=int, default=DEFAULT_DAYS)
     parser.add_argument("--message", default=DEFAULT_COMMIT_MESSAGE)

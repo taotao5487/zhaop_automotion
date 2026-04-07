@@ -15,6 +15,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from scripts.publish_recruitment_static_site import (  # noqa: E402
     PublishConfig,
+    existing_default_data_path,
     publish_static_site,
     sync_site_files,
 )
@@ -151,3 +152,21 @@ def test_publish_static_site_runs_export_before_syncing(tmp_path: Path):
         "--days",
         "30",
     ]
+
+
+def test_existing_default_data_path_prefers_primary_workspace_when_running_in_worktree(tmp_path: Path):
+    home = tmp_path / "home"
+    primary_db = home / "Documents" / "zhaop_automotion" / "data" / "jobs.db"
+    worktree_db = home / "Documents" / "zhaop_automotion" / ".worktrees" / "feature" / "data" / "jobs.db"
+    primary_db.parent.mkdir(parents=True)
+    worktree_db.parent.mkdir(parents=True)
+    primary_db.write_text("primary", encoding="utf-8")
+    worktree_db.write_text("worktree", encoding="utf-8")
+
+    result = existing_default_data_path(
+        "jobs.db",
+        project_root=home / "Documents" / "zhaop_automotion" / ".worktrees" / "feature",
+        home=home,
+    )
+
+    assert result == primary_db
