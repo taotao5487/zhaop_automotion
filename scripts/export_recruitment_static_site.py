@@ -47,13 +47,18 @@ def query_recruitment_items(
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         """
-        SELECT title, link, publish_time
+        SELECT
+            articles.title,
+            articles.link,
+            articles.publish_time,
+            COALESCE(NULLIF(subscriptions.nickname, ''), articles.fakeid) AS source_name
         FROM articles
-        WHERE is_recruitment = 1
-          AND review_status = 'confirmed'
-          AND link != ''
-          AND publish_time >= ?
-        ORDER BY publish_time DESC, id DESC
+        LEFT JOIN subscriptions ON subscriptions.fakeid = articles.fakeid
+        WHERE articles.is_recruitment = 1
+          AND articles.review_status = 'confirmed'
+          AND articles.link != ''
+          AND articles.publish_time >= ?
+        ORDER BY articles.publish_time DESC, articles.id DESC
         """,
         (threshold,),
     ).fetchall()
@@ -66,6 +71,7 @@ def query_recruitment_items(
             {
                 "title": row["title"],
                 "url": row["link"],
+                "source_name": row["source_name"] or "",
                 "publish_date": datetime.fromtimestamp(publish_ts).strftime("%Y-%m-%d"),
                 "publish_timestamp": publish_ts,
             }

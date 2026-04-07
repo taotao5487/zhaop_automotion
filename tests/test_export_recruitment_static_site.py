@@ -37,6 +37,10 @@ def _seed_articles(db_path: Path) -> int:
             is_recruitment INTEGER NOT NULL DEFAULT 0,
             review_status TEXT NOT NULL DEFAULT ''
         );
+        CREATE TABLE subscriptions (
+            fakeid TEXT PRIMARY KEY,
+            nickname TEXT NOT NULL DEFAULT ''
+        );
         """
     )
     rows = [
@@ -53,6 +57,10 @@ def _seed_articles(db_path: Path) -> int:
         VALUES (?, ?, ?, ?, ?, ?)
         """,
         rows,
+    )
+    conn.executemany(
+        "INSERT INTO subscriptions (fakeid, nickname) VALUES (?, ?)",
+        [("f1", "测试医院公众号")],
     )
     conn.commit()
     conn.close()
@@ -74,6 +82,7 @@ def test_query_recruitment_items_filters_and_sorts(tmp_path: Path):
 
     assert [item["title"] for item in items] == ["最新公开招聘公告", "人才引进公告"]
     assert [item["publish_date"] for item in items] == ["2026-04-06", "2026-04-06"]
+    assert [item["source_name"] for item in items] == ["测试医院公众号", "测试医院公众号"]
     assert all(item["url"].startswith("https://example.com/") for item in items)
 
 
@@ -96,6 +105,7 @@ def test_export_static_site_writes_payload_and_qr_copy(tmp_path: Path):
     payload = json.loads((output_dir / "recruitment.json").read_text(encoding="utf-8"))
     assert payload["count"] == 2
     assert payload["items"][0]["title"] == "最新公开招聘公告"
+    assert payload["items"][0]["source_name"] == "测试医院公众号"
     assert payload["items"][1]["title"] == "人才引进公告"
     assert payload["generated_at"].startswith("2026-04-06")
     assert (output_dir / "assets" / "official_wx_card_qr.jpg").read_bytes() == b"fake-image"
@@ -134,6 +144,8 @@ def test_static_shell_files_include_mobile_and_modal_hooks():
     assert 'id="continueButton"' in html
     assert "fetch('./recruitment.json')" in js
     assert "pendingUrl" in js
+    assert "source_name" in js
+    assert "来源：" in js
     assert "@media (min-width: 768px)" in css
     assert "min-height: 48px;" in css
 
@@ -151,6 +163,10 @@ def test_export_static_site_returns_empty_payload_when_no_matches(tmp_path: Path
             publish_time INTEGER NOT NULL DEFAULT 0,
             is_recruitment INTEGER NOT NULL DEFAULT 0,
             review_status TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE subscriptions (
+            fakeid TEXT PRIMARY KEY,
+            nickname TEXT NOT NULL DEFAULT ''
         );
         """
     )

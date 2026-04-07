@@ -34,7 +34,8 @@ function render(items) {
   items.forEach((item) => {
     const fragment = template.content.cloneNode(true);
     fragment.querySelector(".job-title").textContent = item.title;
-    fragment.querySelector(".job-date").textContent = `发布日期：${item.publish_date}`;
+    fragment.querySelector(".job-date").textContent =
+      `来源：${item.source_name || "未知来源"} · 发布日期：${item.publish_date}`;
     fragment.querySelector(".read-button").addEventListener("click", () => {
       state.pendingUrl = item.url;
       modal.hidden = false;
@@ -47,7 +48,11 @@ function render(items) {
 function applyFilter() {
   const keyword = normalizeKeyword(searchInput.value);
   state.filteredItems = keyword
-    ? state.items.filter((item) => item.title.toLowerCase().includes(keyword))
+    ? state.items.filter((item) => {
+        const title = item.title.toLowerCase();
+        const sourceName = (item.source_name || "").toLowerCase();
+        return title.includes(keyword) || sourceName.includes(keyword);
+      })
     : [...state.items];
   render(state.filteredItems);
 }
