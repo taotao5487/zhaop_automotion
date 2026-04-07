@@ -97,6 +97,13 @@ def _seed_articles(db_path: Path) -> int:
     return now_ts
 
 
+def _write_site_shell(output_dir: Path) -> None:
+    (output_dir / "assets").mkdir(parents=True)
+    (output_dir / "index.html").write_text("<!DOCTYPE html>", encoding="utf-8")
+    (output_dir / "assets" / "site.css").write_text("body{}", encoding="utf-8")
+    (output_dir / "assets" / "site.js").write_text("console.log('ok')", encoding="utf-8")
+
+
 def test_query_recruitment_items_filters_and_sorts(tmp_path: Path):
     db_path = tmp_path / "rss.db"
     now_ts = _seed_articles(db_path)
@@ -112,6 +119,7 @@ def test_export_static_site_writes_payload_and_qr_copy(tmp_path: Path):
     db_path = tmp_path / "rss.db"
     now_ts = _seed_articles(db_path)
     output_dir = tmp_path / "site"
+    _write_site_shell(output_dir)
     qr_source = tmp_path / "official_wx_card_qr.jpg"
     qr_source.write_bytes(b"fake-image")
 
@@ -777,10 +785,7 @@ def test_export_static_site_returns_empty_payload_when_no_matches(tmp_path: Path
     conn.close()
 
     output_dir = tmp_path / "site"
-    (output_dir / "assets").mkdir(parents=True)
-    (output_dir / "index.html").write_text("<!DOCTYPE html>", encoding="utf-8")
-    (output_dir / "assets" / "site.css").write_text("body{}", encoding="utf-8")
-    (output_dir / "assets" / "site.js").write_text("console.log('ok')", encoding="utf-8")
+    _write_site_shell(output_dir)
     qr_source = tmp_path / "official_wx_card_qr.jpg"
     qr_source.write_bytes(b"fake-image")
 
