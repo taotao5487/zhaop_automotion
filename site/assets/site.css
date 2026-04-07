@@ -73,6 +73,13 @@ h1 {
   line-height: 1.6;
 }
 
+.update-time {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .search-row {
   display: grid;
   gap: 10px;

@@ -267,12 +267,16 @@ def test_static_shell_files_include_mobile_and_modal_hooks():
     assert "点击阅读原文前会先提示关注公众号" not in html
     assert "输入医院、地区、人才引进等关键词" in html
     assert "输入职位、医院、人才引进等关键词" not in html
-    assert "fetch('./recruitment.json')" in js
+    assert '<script src="./assets/site.js?v=' in html
+    assert "fetch('./recruitment.json', { cache: 'no-store' })" in js
+    assert "cache: 'no-store'" in js
     assert "pendingUrl" in js
     assert "source_name" in js
     assert "generated_at" in js
     assert "更新时间：" in js
     assert "来源：" in js
+    assert ".update-time" in css
+    assert "font-size: 12px;" in css
     assert "@media (min-width: 768px)" in css
     assert "min-height: 48px;" in css
 

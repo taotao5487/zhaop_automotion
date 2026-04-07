@@ -66,7 +66,7 @@ function closeModal() {
 async function loadItems() {
   resultMeta.textContent = "正在加载招聘公告...";
   updateTime.textContent = "更新时间：正在加载...";
-  const response = await fetch('./recruitment.json');
+  const response = await fetch('./recruitment.json', { cache: 'no-store' });
   const payload = await response.json();
   state.items = payload.items || [];
   state.filteredItems = [...state.items];
