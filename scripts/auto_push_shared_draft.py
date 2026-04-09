@@ -17,7 +17,8 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 DEFAULT_SITE_URL = "http://127.0.0.1:5001"
-DEFAULT_TIMEOUT = 120.0
+DEFAULT_API_TIMEOUT = 900.0
+DEFAULT_WEBHOOK_TIMEOUT = 30.0
 ENV_FILE = ROOT_DIR / ".env"
 NO_ARTICLE_MARKERS = (
     "当前没有未推送到共享草稿串的 confirmed 招聘文章",
@@ -30,6 +31,26 @@ class PushOutcome:
         self.kind = kind
         self.summary = summary
         self.payload = payload
+
+
+def _parse_timeout_env(name: str, default: float) -> float:
+    raw_value = (os.getenv(name, "") or "").strip()
+    if not raw_value:
+        return float(default)
+    try:
+        parsed = float(raw_value)
+    except ValueError:
+        return float(default)
+    if parsed <= 0:
+        return float(default)
+    return parsed
+
+
+def _format_timeout_seconds(timeout: float) -> str:
+    timeout_value = float(timeout)
+    if timeout_value.is_integer():
+        return str(int(timeout_value))
+    return f"{timeout_value:g}"
 
 
 def _first_result_error(data):
@@ -146,6 +167,11 @@ def load_runtime_config():
     return {
         "site_url": (os.getenv("SITE_URL", DEFAULT_SITE_URL) or DEFAULT_SITE_URL).rstrip("/"),
         "webhook_url": (os.getenv("WEBHOOK_URL", "") or "").strip(),
+        "api_timeout": _parse_timeout_env("AUTO_PUSH_API_TIMEOUT_SECONDS", DEFAULT_API_TIMEOUT),
+        "webhook_timeout": _parse_timeout_env(
+            "AUTO_PUSH_WEBHOOK_TIMEOUT_SECONDS",
+            DEFAULT_WEBHOOK_TIMEOUT,
+        ),
     }
 
 
@@ -156,7 +182,11 @@ def build_push_endpoint(site_url, limit=None):
     return endpoint
 
 
-def send_wecom_markdown(webhook_url, markdown_text, timeout=10.0):
+def send_wecom_markdown(
+    webhook_url,
+    markdown_text,
+    timeout=DEFAULT_WEBHOOK_TIMEOUT,
+):
     if not webhook_url:
         return False
 
@@ -164,7 +194,12 @@ def send_wecom_markdown(webhook_url, markdown_text, timeout=10.0):
         "msgtype": "markdown",
         "markdown": {"content": markdown_text},
     }
-    response = httpx.post(webhook_url, json=payload, timeout=timeout)
+    try:
+        response = httpx.post(webhook_url, json=payload, timeout=timeout)
+    except httpx.TimeoutException as exc:
+        raise RuntimeError(
+            f"企业微信机器人通知超时（{_format_timeout_seconds(timeout)}秒）"
+        ) from exc
     response.raise_for_status()
 
     content_type = response.headers.get("content-type", "")
@@ -175,13 +210,30 @@ def send_wecom_markdown(webhook_url, markdown_text, timeout=10.0):
     return True
 
 
-def run_auto_push(site_url, webhook_url, limit, run_label):
+def run_auto_push(
+    site_url,
+    webhook_url,
+    limit,
+    run_label,
+    api_timeout=DEFAULT_API_TIMEOUT,
+    webhook_timeout=DEFAULT_WEBHOOK_TIMEOUT,
+):
     endpoint = build_push_endpoint(site_url, limit=limit)
 
     try:
-        response = httpx.post(endpoint, timeout=DEFAULT_TIMEOUT)
+        response = httpx.post(endpoint, timeout=api_timeout)
         response.raise_for_status()
         payload = response.json()
+    except httpx.TimeoutException as exc:
+        timeout_text = _format_timeout_seconds(api_timeout)
+        outcome = PushOutcome(
+            kind="failure",
+            summary=f"推送接口超时（{timeout_text}秒）",
+            payload={
+                "error": f"推送接口超时（{timeout_text}秒）",
+                "exception": str(exc),
+            },
+        )
     except httpx.HTTPStatusError as exc:
         try:
             error_payload = exc.response.json()
@@ -206,7 +258,7 @@ def run_auto_push(site_url, webhook_url, limit, run_label):
     )
 
     try:
-        send_wecom_markdown(webhook_url, message)
+        send_wecom_markdown(webhook_url, message, timeout=webhook_timeout)
     except Exception as exc:
         print(f"[WARN] webhook send failed: {exc}", file=sys.stderr)
 
@@ -219,6 +271,18 @@ def parse_args():
     parser.add_argument("--webhook-url", default=None, help="Override WEBHOOK_URL from .env")
     parser.add_argument("--limit", type=int, default=None, help="Optional batch limit appended to the push API")
     parser.add_argument("--label", default=None, help="Run label used in the webhook message, default current HH:MM")
+    parser.add_argument(
+        "--api-timeout",
+        type=float,
+        default=None,
+        help=f"Push API timeout in seconds, default {int(DEFAULT_API_TIMEOUT)}",
+    )
+    parser.add_argument(
+        "--webhook-timeout",
+        type=float,
+        default=None,
+        help=f"WeCom webhook timeout in seconds, default {int(DEFAULT_WEBHOOK_TIMEOUT)}",
+    )
     return parser.parse_args()
 
 
@@ -228,12 +292,20 @@ def main():
     site_url = (args.site_url or config["site_url"]).rstrip("/")
     webhook_url = args.webhook_url or config["webhook_url"]
     run_label = args.label or datetime.now().strftime("%H:%M")
+    api_timeout = float(
+        args.api_timeout if args.api_timeout and args.api_timeout > 0 else config["api_timeout"]
+    )
+    webhook_timeout = float(
+        args.webhook_timeout if args.webhook_timeout and args.webhook_timeout > 0 else config["webhook_timeout"]
+    )
 
     outcome = run_auto_push(
         site_url=site_url,
         webhook_url=webhook_url,
         limit=args.limit,
         run_label=run_label,
+        api_timeout=api_timeout,
+        webhook_timeout=webhook_timeout,
     )
 
     print(
